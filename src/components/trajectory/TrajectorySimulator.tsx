@@ -13,10 +13,8 @@ export const TrajectorySimulator: React.FC<TrajectorySimulatorProps> = ({
   selectedSatelliteId,
   optimizationGoal = 'fuel'
 }) => {
-  const [viewMode, setViewMode] = useState<'3D' | '2D'>('3D');
-  const [showOrbits, setShowOrbits] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [simulationSpeed, setSimulationSpeed] = useState(50);
+  const [simulationSpeed, setSimulationSpeed] = useState(10);
   const animationRef = useRef<number | null>(null);
   const earthRef = useRef<HTMLDivElement>(null);
   const satelliteRef = useRef<HTMLDivElement>(null);
@@ -158,34 +156,6 @@ export const TrajectorySimulator: React.FC<TrajectorySimulatorProps> = ({
 
   return (
     <div className="relative h-full w-full">
-      <div className="absolute top-2 right-2 flex gap-2 z-10">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className={`bg-space-dark border-space-light text-white hover:bg-space-light ${viewMode === '3D' ? 'border-purple-400 text-purple-400' : ''}`}
-          onClick={() => setViewMode('3D')}
-        >
-          3D
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className={`bg-space-dark border-space-light text-white hover:bg-space-light ${viewMode === '2D' ? 'border-purple-400 text-purple-400' : ''}`}
-          onClick={() => setViewMode('2D')}
-        >
-          2D
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="bg-space-dark border-space-light text-white hover:bg-space-light"
-          onClick={() => setShowOrbits(!showOrbits)}
-        >
-          <Settings className="mr-1 h-4 w-4" />
-          {showOrbits ? 'Hide Orbits' : 'Show Orbits'}
-        </Button>
-      </div>
-
       {isLoading ? (
         <div className="flex items-center justify-center h-full w-full">
           <div className="flex flex-col items-center text-center">
@@ -196,7 +166,7 @@ export const TrajectorySimulator: React.FC<TrajectorySimulatorProps> = ({
       ) : selectedSatelliteId ? (
         <div className="h-full w-full flex flex-col">
           <div className="flex-1 relative overflow-hidden">
-            {/* Earth and orbits visualization */}
+            {/* Earth visualization */}
             <div className="h-full w-full bg-gradient-to-b from-[#000420] to-[#000b33] flex items-center justify-center overflow-hidden">
               <div className="relative">
                 {/* Earth */}
@@ -214,25 +184,6 @@ export const TrajectorySimulator: React.FC<TrajectorySimulatorProps> = ({
                     }}
                   ></div>
                 </div>
-                
-                {/* Satellite orbit path */}
-                {showOrbits && (
-                  <div className="w-[160px] h-[160px] rounded-full border border-blue-500/30 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"></div>
-                )}
-                
-                {/* Space debris orbit paths */}
-                {showOrbits && spaceDebris.map((debris, index) => (
-                  <div 
-                    key={debris.id} 
-                    className="rounded-full border border-white/10 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                    style={{
-                      width: `${debris.distance * 2}px`,
-                      height: `${debris.distance * 2}px`,
-                      borderColor: `${debris.color}20`,
-                      transform: `rotateX(${debris.inclination * 180 / Math.PI}deg)`
-                    }}
-                  ></div>
-                ))}
                 
                 {/* Satellite trail container */}
                 <div id="satellite-trail" className="absolute left-1/2 top-1/2 z-10"></div>
