@@ -4,7 +4,6 @@ import { Satellite, Shield, Radar, AlertTriangle } from 'lucide-react';
 import Map from '../components/dashboard/Map';
 import AlertPanel from '../components/dashboard/AlertPanel';
 import ForecastPanel from '../components/dashboard/ForecastPanel';
-import Timeline from '../components/dashboard/Timeline';
 import InfoCard from '../components/dashboard/InfoCard';
 import Sidebar from '../components/sidebar/Sidebar';
 
@@ -13,7 +12,7 @@ const Dashboard = () => {
     <div className="min-h-screen bg-space text-white flex">
       <Sidebar />
       
-      <div className="flex-1 pl-64">
+      <div className="flex-1">
         {/* Main Content */}
         <div className="p-6">
           <header className="mb-6">
@@ -61,11 +60,6 @@ const Dashboard = () => {
               <AlertPanel />
               <ForecastPanel />
             </div>
-          </div>
-          
-          {/* Timeline at the bottom */}
-          <div className="mt-6">
-            <Timeline />
           </div>
         </div>
       </div>

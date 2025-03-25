@@ -54,7 +54,7 @@ const Sidebar: React.FC = () => {
     <div 
       className={`${
         isCollapsed ? 'w-16' : 'w-64'
-      } h-screen flex flex-col bg-space-dark neo-border border-r transition-all duration-300 ease-in-out fixed z-20 top-0 left-0`}
+      } vh-full flex flex-col bg-space-dark neo-border border-r transition-all duration-300 ease-in-out z-20 top-0 left-0`}
     >
       <div className={`p-4 ${isCollapsed ? '' : 'flex flex-col'}`}>
         <div className={`${isCollapsed ? '' : 'mb-2'} flex justify-center`}>
