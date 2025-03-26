@@ -107,7 +107,7 @@ const AlertItem: React.FC<{ alert: Alert }> = ({ alert }) => {
 
 const AlertPanel: React.FC<AlertPanelProps> = ({ className = '' }) => {
   return (
-    <div className={`glass-panel ${className}`}>
+    <div className='glass-panel'>
       <div className="p-4 border-b border-white/10">
         <div className="flex justify-between items-center">
           <h3 className="font-semibold text-lg text-white">Real-time Alerts</h3>

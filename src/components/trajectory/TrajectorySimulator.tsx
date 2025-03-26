@@ -250,27 +250,26 @@ export const TrajectorySimulator: React.FC<TrajectorySimulatorProps> = ({
                   <span>{Math.round(orbitParams.speed * 10000)} m/s</span>
                 </div>
               </div>
-            </div>
-          </div>
-          
           {/* Simulation controls */}
-          <div className="h-12 bg-space-dark border-t border-space-light p-2 flex items-center gap-3">
+          <div className="h-12 bg-space-dark border-t border-space-light p-6 mt-3 flex items-center gap-3">
             <div className="text-white/70 text-xs">Simulation Speed:</div>
-            <div className="w-32">
-              <Slider
-                value={[simulationSpeed]}
-                onValueChange={(values) => setSimulationSpeed(values[0])}
-                min={10}
-                max={100}
-                step={1}
-                className="bg-space-light"
-              />
-            </div>
-            <div className="text-white/80 text-xs">
-              {simulationSpeed < 30 ? 'Slow' : simulationSpeed < 70 ? 'Normal' : 'Fast'}
+              <div className="w-32">
+                <Slider
+                  value={[simulationSpeed]}
+                  onValueChange={(values) => setSimulationSpeed(values[0])}
+                  min={10}
+                  max={100}
+                  step={1}
+                  className="bg-space-light"
+                />
+              </div>
+              <div className="text-white/80 text-xs">
+                {simulationSpeed < 30 ? 'Slow' : simulationSpeed < 70 ? 'Normal' : 'Fast'}
+               </div>
+              </div>
+             </div>
             </div>
           </div>
-        </div>
       ) : (
         <div className="flex items-center justify-center h-full text-center p-6">
           <div className="flex flex-col items-center max-w-md">

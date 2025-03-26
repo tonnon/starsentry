@@ -60,7 +60,7 @@ const TrajectoryOptimization = () => {
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <Card className="bg-space-dark border-space-light text-white h-[600px] overflow-hidden">
+              <Card className="bg-space-dark border-space-light text-white h-full overflow-hidden">
                 <CardHeader className="border-b border-space-light bg-gradient-to-r from-space-dark to-space pb-2">
                   <CardTitle className="flex items-center gap-2">
                     <Orbit className="text-purple-400" size={20} />
@@ -70,7 +70,7 @@ const TrajectoryOptimization = () => {
                     Interactive visualization of satellite orbits
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="p-0 h-[520px]">
+                <CardContent className="p-0 h-full">
                   <TrajectorySimulator 
                     selectedSatelliteId={selectedSatellite} 
                     optimizationGoal={optimizationGoal}

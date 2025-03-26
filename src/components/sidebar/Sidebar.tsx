@@ -56,10 +56,8 @@ const Sidebar: React.FC = () => {
         isCollapsed ? 'w-16' : 'w-64'
       } vh-full flex flex-col bg-space-dark neo-border border-r transition-all duration-300 ease-in-out z-20 top-0 left-0`}
     >
+      
       <div className={`p-4 ${isCollapsed ? '' : 'flex flex-col'}`}>
-        <div className={`${isCollapsed ? '' : 'mb-2'} flex justify-center`}>
-          <Logo size={isCollapsed ? 'md' : '2xl'} centered={true} />
-        </div>
         <div className={`flex ${isCollapsed ? 'justify-center' : 'justify-end'}`}>
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
@@ -68,6 +66,10 @@ const Sidebar: React.FC = () => {
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
+        <div className=' mb-2 flex justify-center'>
+          <Logo  centered={true} />
+        </div>
+
       </div>
 
       <div className="mt-4 flex flex-col gap-2 flex-1 px-2">
