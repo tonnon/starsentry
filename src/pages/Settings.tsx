@@ -42,7 +42,7 @@ const Settings = () => {
     <div className="flex h-screen overflow-hidden bg-space-dark text-white">
       <Sidebar />
 
-      <div className="flex-1 overflow-auto pl-64">
+      <div className="flex-1 overflow-auto">
         <div className="container py-6 max-w-6xl">
           <div className="flex items-center justify-between mb-8">
             <div>

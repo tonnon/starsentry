@@ -142,7 +142,7 @@ const CollisionPredictions: React.FC = () => {
     <div className="min-h-screen bg-space text-white flex">
       <Sidebar />
       
-      <div className="flex-1 pl-64">
+      <div className="flex-1">
         <div className="p-6">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-glow">Collision Predictions</h1>
