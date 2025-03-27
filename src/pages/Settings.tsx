@@ -50,10 +50,12 @@ const Settings = () => {
               <h1 className="text-3xl font-bold text-white">Settings</h1>
               <p className="text-gray-400 mt-1">Configure your space traffic management system</p>
             </div>
-            <Button onClick={handleSaveSettings} className="bg-neon-blue hover:bg-neon-blue/80">
-              <Save className="mr-2 h-4 w-4" />
-              Save All Settings
-            </Button>
+            <form onSubmit={handleSaveSettings}>
+              <Button onClick={handleSaveSettings} className="bg-neon-blue hover:bg-neon-blue/80">
+                <Save className="mr-2 h-4 w-4" />
+                Save All Settings
+              </Button>
+            </form>
           </div>
 
           <Tabs defaultValue="appearance">
