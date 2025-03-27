@@ -31,8 +31,9 @@ import Sidebar from '@/components/sidebar/Sidebar';
 const Settings = () => {
   const { toast } = useToast();
 
-  const handleSaveSettings = (e) => {
-    e.preventDefault();
+  const handleSaveSettings = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    console.log("Salvando configurações... Nenhuma API chamada.");
     toast({
       title: "Settings saved",
       description: "Your settings have been successfully saved.",
