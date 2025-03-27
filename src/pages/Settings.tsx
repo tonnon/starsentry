@@ -31,8 +31,8 @@ import Sidebar from '@/components/sidebar/Sidebar';
 const Settings = () => {
   const { toast } = useToast();
 
-  const handleSaveSettings = () => {
-    event.preventDefault();
+  const handleSaveSettings = (e) => {
+    e.preventDefault();
     toast({
       title: "Settings saved",
       description: "Your settings have been successfully saved.",
