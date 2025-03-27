@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Radar, AlertTriangle, OrbitIcon, BarChart3, GlobeIcon, Settings, LogOut } from 'lucide-react';
 import Logo from '../logo/Logo';
@@ -36,8 +35,14 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, text, to, isActiv
 };
 
 const Sidebar: React.FC = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', String(isCollapsed));
+  }, [isCollapsed]);
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -56,7 +61,6 @@ const Sidebar: React.FC = () => {
         isCollapsed ? 'w-16' : 'w-64'
       } vh-full flex flex-col bg-space-dark neo-border border-r transition-all duration-300 ease-in-out z-20 top-0 left-0`}
     >
-      
       <div className={`p-4 ${isCollapsed ? '' : 'flex flex-col'}`}>
         <div className={`flex ${isCollapsed ? 'justify-center' : 'justify-end'}`}>
           <button 
@@ -66,10 +70,9 @@ const Sidebar: React.FC = () => {
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
-        <div className=' mb-2 flex justify-center'>
-          <Logo  centered={true} />
+        <div className='mb-2 flex justify-center'>
+          <Logo centered={true} />
         </div>
-
       </div>
 
       <div className="mt-4 flex flex-col gap-2 flex-1 px-2">
