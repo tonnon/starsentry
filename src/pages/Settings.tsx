@@ -32,6 +32,7 @@ const Settings = () => {
   const { toast } = useToast();
 
   const handleSaveSettings = () => {
+    event.preventDefault();
     toast({
       title: "Settings saved",
       description: "Your settings have been successfully saved.",
@@ -442,12 +443,12 @@ const Settings = () => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="fullName">Full Name</Label>
-                          <Input id="fullName" className="bg-space" defaultValue="Space Administrator" />
+                          <Input id="fullName" className="bg-space" defaultValue="Admin" />
                         </div>
                         
                         <div className="space-y-2">
                           <Label htmlFor="email">Email Address</Label>
-                          <Input id="email" type="email" className="bg-space" defaultValue="admin@spacetraffic.com" />
+                          <Input id="email" type="email" className="bg-space" defaultValue="admin@starsentry.com" />
                         </div>
                       </div>
                       

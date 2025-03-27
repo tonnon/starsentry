@@ -25,7 +25,7 @@ const TrajectoryOptimization = () => {
     if (!selectedSatellite) return;
     
     setOptimizationRunning(true);
-    
+    event.preventDefault();
     // Simulate optimization process
     setTimeout(() => {
       setOptimizationRunning(false);
