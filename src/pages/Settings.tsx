@@ -45,7 +45,7 @@ const Settings = () => {
       <Sidebar />
 
       <div className="flex-1 overflow-auto">
-        <div className="container py-6 max-w-6xl">
+        <div className="container py-6">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-white">Settings</h1>
@@ -60,26 +60,26 @@ const Settings = () => {
           </div>
 
           <Tabs defaultValue="appearance">
-            <TabsList className="grid grid-cols-5 h-12 mb-8 bg-space-light">
+            <TabsList className="grid grid-cols-5 h-12 mb-8 bg-space-light d">
               <TabsTrigger value="appearance" className="data-[state=active]:bg-neon-blue/20 data-[state=active]:text-neon-blue">
                 <Monitor className="mr-2 h-4 w-4" />
-                Appearance
+                <span className='hidden md:block'> Appearance </span>
               </TabsTrigger>
               <TabsTrigger value="notifications" className="data-[state=active]:bg-neon-blue/20 data-[state=active]:text-neon-blue">
                 <Bell className="mr-2 h-4 w-4" />
-                Notifications
+                <span className='hidden md:block'> Notifications </span>
               </TabsTrigger>
               <TabsTrigger value="security" className="data-[state=active]:bg-neon-blue/20 data-[state=active]:text-neon-blue">
                 <Shield className="mr-2 h-4 w-4" />
-                Security
+                <span className='hidden md:block'> Security </span>
               </TabsTrigger>
               <TabsTrigger value="system" className="data-[state=active]:bg-neon-blue/20 data-[state=active]:text-neon-blue">
                 <Rocket className="mr-2 h-4 w-4" />
-                System
+                <span className='hidden md:block'> System </span>
               </TabsTrigger>
               <TabsTrigger value="account" className="data-[state=active]:bg-neon-blue/20 data-[state=active]:text-neon-blue">
                 <UserCog className="mr-2 h-4 w-4" />
-                Account
+                <span className='hidden md:block'> Account </span>
               </TabsTrigger>
             </TabsList>
 

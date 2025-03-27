@@ -66,7 +66,7 @@ const CollisionRiskTrend: React.FC<CollisionRiskTrendProps> = ({ timeRange }) =>
   };
 
   return (
-    <div className="h-80">
+    <div className="h-70 ml-[-40px]">
       <ChartContainer config={chartConfig}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
