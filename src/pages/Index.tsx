@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Satellite, Shield, Radar, AlertTriangle } from 'lucide-react';
-import Map from '../components/dashboard/Map';
+import Map from '../components/dashboard/SpaceMap';
 import AlertPanel from '../components/dashboard/AlertPanel';
 import ForecastPanel from '../components/dashboard/ForecastPanel';
 import InfoCard from '../components/dashboard/InfoCard';
@@ -36,7 +36,7 @@ const Dashboard = () => {
             />
             <InfoCard 
               title="Collision Alerts" 
-              value="8" 
+              value="3" 
               icon={<AlertTriangle size={20} />}
               trend={{ value: 12.5, isPositive: false }}
             />
