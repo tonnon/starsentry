@@ -74,8 +74,8 @@ type Settings = {
       use24hFormat: true,
     },
     account: {
-      fullName: 'Admin',
-      email: 'admin@starsentry.com',
+      fullName: 'Luke Operator',
+      email: 'lukeoperator@starsentry.com',
     },
   };
   

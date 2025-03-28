@@ -14,7 +14,11 @@ import {
   VolumeX,
   RefreshCw,
   UserCog,
-  Rocket
+  Rocket,
+  PlusCircle,
+  MoreVertical,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -25,12 +29,59 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem
+} from '@/components/ui/select';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import Sidebar from '@/components/sidebar/Sidebar';
 
 const Settings = () => {
   const { toast } = useToast();
   const { settings, updateSettings } = useSettings();
   const [isClient, setIsClient] = React.useState(false);
+
+  // State for user management
+  const [users, setUsers] = React.useState([
+    { id: 1, name: "Luanna Analyst", email: "luannaanalyst@starsentry.com", role: "analyst" },
+    { id: 2, name: "Luke Senior Operator", email: "lukesenioroperator@starsentry.com", role: "senior-operator" },
+    { id: 3, name: "Jane Operator", email: "janeoperator@starsentry.com", role: "operator" },
+    { id: 4, name: "Mike Junior Operator", email: "mikeojuniorperator@starsentry.com", role: "junior-operator" }
+  ]);
+
+  // State for user modal
+  const [isUserModalOpen, setIsUserModalOpen] = React.useState(false);
+  const [currentUser, setCurrentUser] = React.useState<{
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  } | null>(null);
 
   React.useEffect(() => {
     setIsClient(true);
@@ -46,6 +97,71 @@ const Settings = () => {
 
   const handleTabChange = (value: string) => {
     updateSettings('ui', { activeTab: value });
+  };
+
+  const handleAddUserClick = () => {
+    setCurrentUser({
+      id: -1, // Temporary id for new users
+      name: "",
+      email: "",
+      role: "junior-operator"
+    });
+    setIsUserModalOpen(true);
+  };
+
+  const handleEditUser = (user: { id: number; name: string; email: string; role: string }) => {
+    setCurrentUser({
+      id: user.id, // Explicitly include id
+      name: user.name,
+      email: user.email,
+      role: user.role
+    });
+    setIsUserModalOpen(true);
+  };
+
+  const handleSaveUser = () => {
+    if (!currentUser) return;
+  
+    if (!currentUser.name || !currentUser.email || !currentUser.role) {
+      toast({
+        title: "Error",
+        description: "Please fill all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+  
+    if (currentUser.id !== -1) {
+      // Update existing user
+      setUsers(users.map(user => 
+        user.id === currentUser.id ? currentUser : user
+      ));
+      toast({
+        title: "User updated",
+        description: "User information has been successfully updated.",
+      });
+    } else {
+      // Add new user
+      setUsers([...users, { 
+        ...currentUser, 
+        id: Date.now() // Generate a real id
+      }]);
+      toast({
+        title: "User added",
+        description: "New user has been successfully added.",
+      });
+    }
+  
+    setIsUserModalOpen(false);
+    setCurrentUser(null);
+  };
+
+  const handleDeleteUser = (id: number) => {
+    setUsers(users.filter(user => user.id !== id));
+    toast({
+      title: "User deleted",
+      description: "User has been successfully removed.",
+    });
   };
 
   const accentColors = [
@@ -639,17 +755,152 @@ const Settings = () => {
                           <Shield className="h-4 w-4 text-neon-blue" />
                         </div>
                         <div>
-                          <p className="font-medium">Administrator</p>
+                          <p className="font-medium">Senior Operator</p>
                           <p className="text-sm text-muted-foreground">Full system access and control</p>
                         </div>
                       </div>
                     </div>
                   </CardContent>
                   <CardFooter className="border-t border-white/10 flex justify-between pt-6">
-                    <Button variant="outline" className="text-status-danger">Delete Account</Button>
                     <Button className="bg-neon-blue hover:bg-neon-blue/80">Update Profile</Button>
                   </CardFooter>
                 </Card>
+
+                {/* User Management Section */}
+                <Card className="neo-border border-white/10 bg-space-light">
+                  <CardHeader>
+                    <CardTitle>User Management</CardTitle>
+                    <CardDescription className="text-gray-400">Add and manage system users</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <div className="flex justify-start">
+                        <Button 
+                          className="bg-neon-blue hover:bg-neon-blue/80"
+                          onClick={handleAddUserClick}
+                        >
+                          <PlusCircle className="mr-2 h-4 w-4" /> Add User
+                        </Button>
+                      </div>
+
+                      <div className="border rounded-md border-white/10">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead>Role</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {users.map((user) => (
+                              <TableRow key={user.id}>
+                                <TableCell>{user.name}</TableCell>
+                                <TableCell>{user.email}</TableCell>
+                                <TableCell>
+                                  <Badge className={
+                                    user.role === 'analyst' 
+                                      ? 'bg-neon-blue/10 text-neon-blue' :
+                                    user.role === 'senior-operator' 
+                                      ? 'bg-purple-500/10 text-purple-400' :
+                                    user.role === 'operator' 
+                                      ? 'bg-green-500/10 text-green-400' 
+                                      : 'bg-yellow-500/10 text-yellow-400'
+                                  }>
+                                    {user.role === 'analyst' ? 'Analyst' :
+                                     user.role === 'senior-operator' ? 'Senior Operator' :
+                                     user.role === 'operator' ? 'Operator' : 'Junior Operator'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm">
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="bg-space border-white/10">
+                                      <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                                        <Edit className="mr-2 h-4 w-4" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem 
+                                        className="text-status-danger"
+                                        onClick={() => handleDeleteUser(user.id)}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* User Modal */}
+                <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
+                  <DialogContent className="bg-space border-white/10">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {currentUser?.id ? "Edit User" : "Add New User"}
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="userName">Full Name</Label>
+                        <Input
+                          id="userName"
+                          className="bg-space"
+                          value={currentUser?.name || ""}
+                          onChange={(e) => currentUser && setCurrentUser({...currentUser, name: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="userEmail">Email</Label>
+                        <Input
+                          id="userEmail"
+                          type="email"
+                          className="bg-space"
+                          value={currentUser?.email || ""}
+                          onChange={(e) => currentUser && setCurrentUser({...currentUser, email: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="userRole">Role</Label>
+                        <Select
+                          value={currentUser?.role || "junior-operator"}
+                          onValueChange={(value) => currentUser && setCurrentUser({...currentUser, role: value})}
+                        >
+                          <SelectTrigger className="bg-space">
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-space border-white/10">
+                            <SelectItem value="analyst">Analyst</SelectItem>
+                            <SelectItem value="senior-operator">Senior Operator</SelectItem>
+                            <SelectItem value="operator">Operator</SelectItem>
+                            <SelectItem value="junior-operator">Junior Operator</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button 
+                        type="button"
+                        className="bg-neon-blue hover:bg-neon-blue/80"
+                        onClick={handleSaveUser}
+                      >
+                        {currentUser?.id ? "Save Changes" : "Add User"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
             </Tabs>
           )}
