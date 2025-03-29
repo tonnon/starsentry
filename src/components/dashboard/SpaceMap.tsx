@@ -280,7 +280,7 @@ const Earth = () => {
   const [colorMap] = useTexture(['https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg']);
 
   useFrame(() => {
-    if (earthRef.current) earthRef.current.rotation.y += 0.0005;
+    if (earthRef.current) earthRef.current.rotation.y += 0.00003;
   });
 
   return (
@@ -383,10 +383,6 @@ const DebrisModel = ({ position, color, obj }: { position: THREE.Vector3, color:
     <mesh ref={ref} position={position} onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
       <sphereGeometry args={[0.06, 6, 6]} />
       <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} roughness={0.8} metalness={0.2} />
-      
-      {obj.collisionRisk === 'High' && (
-        <AlertIcon position={new THREE.Vector3(0, 0.2, 0)} />
-      )}
       
       {hovered && (
         <Html distanceFactor={5}>
