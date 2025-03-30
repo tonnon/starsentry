@@ -2,6 +2,7 @@ import React, { Suspense, useRef, useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars, useTexture, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
+import gsap from 'gsap';
 
 interface SpaceMapProps {
   className?: string;
@@ -243,15 +244,13 @@ const calculateDistance = (pos1: THREE.Vector3, pos2: THREE.Vector3) => {
   return pos1.distanceTo(pos2);
 };
 
-const AlertIcon = ({ position }: { position: THREE.Vector3 }) => {
+const AlertIcon = ({ position, onClick }: { position: THREE.Vector3, onClick: () => void }) => {
   const ref = useRef<THREE.Group>(null);
   const [opacity, setOpacity] = useState(1);
 
-  // Slow pulsing animation (2 second cycle)
   useFrame(() => {
     if (ref.current) {
       const time = Date.now() % 2000;
-      // Smooth pulse using sine wave
       const newOpacity = 0.5 + 0.5 * Math.sin(time * Math.PI / 1000);
       setOpacity(newOpacity);
     }
@@ -260,7 +259,13 @@ const AlertIcon = ({ position }: { position: THREE.Vector3 }) => {
   return (
     <group ref={ref} position={[position.x, position.y, position.z]}>
       <Html center>
-        <div className="flex items-center justify-center">
+        <div 
+          className="flex items-center justify-center cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+        >
           <div 
             className="w-5 h-5 rounded-full border-2 border-white"
             style={{
@@ -330,7 +335,12 @@ const CollisionLine = ({ start, end, color = "#ff3366" }: { start: THREE.Vector3
   );
 };
 
-const SatelliteModel = ({ position, color, obj }: { position: THREE.Vector3, color: string, obj: SpaceObject }) => {
+const SatelliteModel = ({ position, color, obj, onAlertClick }: { 
+  position: THREE.Vector3, 
+  color: string, 
+  obj: SpaceObject,
+  onAlertClick: () => void 
+}) => {
   const [hovered, setHovered] = useState(false);
   const ref = useRef<THREE.Group>(null);
   
@@ -350,7 +360,10 @@ const SatelliteModel = ({ position, color, obj }: { position: THREE.Vector3, col
       </mesh>
       
       {obj.collisionRisk === 'High' && (
-        <AlertIcon position={new THREE.Vector3(0, 0.2, 0)} />
+        <AlertIcon 
+          position={new THREE.Vector3(0, 0.2, 0)} 
+          onClick={onAlertClick}
+        />
       )}
       
       {hovered && (
@@ -368,7 +381,12 @@ const SatelliteModel = ({ position, color, obj }: { position: THREE.Vector3, col
   );
 };
 
-const DebrisModel = ({ position, color, obj }: { position: THREE.Vector3, color: string, obj: SpaceObject }) => {
+const DebrisModel = ({ position, color, obj, onAlertClick }: { 
+  position: THREE.Vector3, 
+  color: string, 
+  obj: SpaceObject,
+  onAlertClick?: () => void 
+}) => {
   const [hovered, setHovered] = useState(false);
   const ref = useRef<THREE.Mesh>(null);
   
@@ -406,7 +424,7 @@ const Atmosphere = () => (
   </mesh>
 );
 
-const Scene = () => {
+const Scene = ({ orbitControlsRef }: { orbitControlsRef: React.RefObject<any> }) => {
   const collisionPairs = useMemo(() => {
     const pairs: {obj1: SpaceObject, obj2: SpaceObject}[] = [];
     
@@ -429,7 +447,34 @@ const Scene = () => {
     return pairs;
   }, []);
 
-  return (
+  const focusOnObject = (position: THREE.Vector3) => {
+    if (orbitControlsRef.current) {
+      const earthCenter = new THREE.Vector3(0, 0, 0);
+      const direction = position.clone().sub(earthCenter).normalize();
+      
+      // Calcula uma posição de câmera que mantém ambos visíveis
+      const cameraDistance = 6; // Ajuste este valor conforme necessário
+      const cameraPosition = direction.clone().multiplyScalar(cameraDistance);
+      
+      // Ajuste para melhor visualização
+      cameraPosition.y += 1.5;
+      
+      // Animação suave da câmera
+      gsap.to(orbitControlsRef.current.object.position, {
+        duration: 1.5,
+        x: cameraPosition.x,
+        y: cameraPosition.y,
+        z: cameraPosition.z,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          // Mantém o foco na Terra durante a animação
+          orbitControlsRef.current!.target.set(0, 0, 0);
+        }
+      });
+    }
+  };
+
+return (
     <>
       <ambientLight intensity={0.3} />
       <pointLight position={[10, 10, 10]} intensity={1} />
@@ -457,9 +502,19 @@ const Scene = () => {
           <React.Fragment key={obj.id}>
             <TrajectoryLine position={pos} color={color} />
             {obj.type === 'satellite' ? (
-              <SatelliteModel position={pos} color={color} obj={obj} />
+              <SatelliteModel 
+                position={pos} 
+                color={color} 
+                obj={obj} 
+                onAlertClick={() => focusOnObject(pos)}
+              />
             ) : (
-              <DebrisModel position={pos} color={color} obj={obj} />
+              <DebrisModel 
+                position={pos} 
+                color={color} 
+                obj={obj} 
+                onAlertClick={obj.collisionRisk === 'High' ? () => focusOnObject(pos) : undefined}
+              />
             )}
           </React.Fragment>
         );
@@ -488,16 +543,34 @@ const Scene = () => {
 };
 
 const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
+  const orbitControlsRef = useRef<any>(null);
+  
   return (
     <div className={`rounded-xl overflow-hidden relative ${className}`}>
-      <Canvas camera={{ position: [0, 0, 6], fov: 45 }} className="h-full w-full">
+      <Canvas 
+        camera={{ 
+          position: [0, 0, 6], 
+          fov: 45,
+          near: 0.1,
+          far: 1000,
+          up: [0, 0, 1]
+        }} 
+        className="h-full w-full"
+        gl={{ antialias: true }}
+      >
         <Suspense fallback={null}>
-          <Scene />
+          <Scene orbitControlsRef={orbitControlsRef} />
         </Suspense>
         <OrbitControls 
-          enableZoom enablePan enableRotate 
-          zoomSpeed={0.6} autoRotate={false}
-          minDistance={3} maxDistance={10}
+          ref={orbitControlsRef}
+          enableZoom={true}
+          enablePan={true}
+          enableRotate={true}
+          zoomSpeed={0.6}
+          autoRotate={false}
+          minDistance={3}
+          maxDistance={20}
+          target={[0, 0, 0]}
         />
       </Canvas>
       
