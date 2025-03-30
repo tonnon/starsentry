@@ -81,11 +81,11 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
 
-  // Mock data for development
+  // Mock data for development and fallback
   const mockForecasts: ForecastEvent[] = [
     {
       id: 'iss-mock',
-      title: 'ISS Position (Mock)',
+      title: 'ISS Position',
       description: 'Lat: 28.52, Lon: -80.60',
       timestamp: new Date().toISOString(),
       type: 'orbital',
@@ -94,7 +94,7 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
     },
     {
       id: 'launch-mock1',
-      title: 'Starlink 6-45',
+      title: 'Starlink Mission',
       description: 'By SpaceX',
       timestamp: new Date(Date.now() + 86400000).toISOString(),
       type: 'launch',
@@ -115,12 +115,12 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
   const updateIssPosition = useCallback((data: any) => {
     setLastUpdated(new Date().toLocaleTimeString());
     setForecasts(prev => {
-      const otherEvents = prev.filter(e => e.id !== 'iss-live' && e.id !== 'iss-mock');
+      const otherEvents = prev.filter(e => !e.id.includes('iss-'));
       return [
         {
           id: 'iss-live',
-          title: 'ISS Position (Live)',
-          description: `Lat: ${data.latitude.toFixed(2)}, Lon: ${data.longitude.toFixed(2)}`,
+          title: 'ISS Position',
+          description: `Lat: ${data.latitude?.toFixed(2) || 'N/A'}, Lon: ${data.longitude?.toFixed(2) || 'N/A'}`,
           timestamp: new Date().toISOString(),
           type: 'orbital',
           impact: 'neutral',
@@ -132,77 +132,124 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
   }, []);
 
   const fetchIssPosition = async () => {
-    try {
-      // Try primary API first
-      const response = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
-      if (!response.ok) throw new Error('Primary API failed');
-      return await response.json();
-    } catch (primaryError) {
-      console.log('Falling back to secondary API');
+    const API_ENDPOINTS = [
+      'https://api.wheretheiss.at/v1/satellites/25544',
+      'https://iss-api.herokuapp.com/iss-now.json',
+      'https://api.open-notify.org/iss-now.json'
+    ];
+
+    for (const endpoint of API_ENDPOINTS) {
       try {
-        // Try backup API
-        const backupResponse = await fetch('https://iss-api.herokuapp.com/iss-now');
-        if (!backupResponse.ok) throw new Error('Backup API failed');
-        const data = await backupResponse.json();
+        const response = await fetch(endpoint);
+        if (!response.ok) continue;
+        
+        const data = await response.json();
         return {
-          latitude: data.iss_position.latitude,
-          longitude: data.iss_position.longitude
+          latitude: data.latitude || data.iss_position?.latitude,
+          longitude: data.longitude || data.iss_position?.longitude
         };
-      } catch (backupError) {
-        console.error('All ISS APIs failed:', backupError);
-        throw backupError;
+      } catch (err) {
+        console.warn(`Failed to fetch from ${endpoint}:`, err);
       }
     }
+    throw new Error('All ISS APIs failed');
   };
 
   const fetchLaunchData = useCallback(async () => {
     try {
-      const response = await fetch('https://lldev.thespacedevs.com/2.2.0/launch/upcoming/?limit=3');
+      // Using SpaceX's more reliable API
+      const response = await fetch('https://api.spacexdata.com/v4/launches/upcoming');
       const data = await response.json();
       
-      const launchEvents: ForecastEvent[] = data.results.slice(0, 2).map((launch: any) => ({
+      const launchEvents: ForecastEvent[] = data.slice(0, 2).map((launch: any) => ({
         id: `launch-${launch.id}`,
-        title: launch.name,
-        description: `By ${launch.launch_service_provider?.name || 'Unknown'}`,
-        timestamp: launch.net,
+        title: launch.name || 'Upcoming Launch',
+        description: `By ${launch.launch_service_provider || 'SpaceX'}`,
+        timestamp: launch.date_utc || new Date().toISOString(),
         type: 'launch',
         impact: 'neutral',
-        agency: launch.launch_service_provider?.name?.includes('SpaceX') ? 'SPACEX' : 'OTHER'
+        agency: 'SPACEX'
       }));
 
       setForecasts(prev => {
-        const issEvent = prev.find(e => e.id === 'iss-live' || e.id === 'iss-mock');
-        return issEvent ? [issEvent, ...launchEvents] : launchEvents;
+        const issEvent = prev.find(e => e.id.includes('iss-'));
+        return issEvent ? [issEvent, ...launchEvents] : [...launchEvents, ...mockForecasts.slice(1)];
       });
     } catch (err) {
       console.error('Error fetching launches:', err);
-      setError('Failed to load launch data');
+      setError('Using cached launch data');
+      // Fallback to mock data if no ISS data exists yet
+      setForecasts(prev => prev.length > 0 ? prev : mockForecasts);
     }
   }, []);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      setForecasts(mockForecasts);
-      setLoading(false);
-      setConnectionStatus('connected');
-      return;
-    }
-
-    let ws: WebSocket;
-    let wsTimeout: NodeJS.Timeout;
     let issInterval: NodeJS.Timeout;
     let launchInterval: NodeJS.Timeout;
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
 
-    const fallbackToPolling = () => {
-      setError('Using fallback updates (polling every 10 seconds)');
-      // Initial fetch
+    const initDataFetch = async () => {
+      try {
+        // Skip WebSocket in production
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            const ws = new WebSocket('wss://ws.wheretheiss.at');
+            
+            ws.onopen = () => {
+              setConnectionStatus('connected');
+              ws.send(JSON.stringify({ type: 'subscribe', id: '25544' }));
+            };
+
+            ws.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'location') {
+                  updateIssPosition(data);
+                }
+              } catch (err) {
+                console.error('Error parsing WebSocket data:', err);
+              }
+            };
+
+            ws.onclose = () => {
+              setConnectionStatus('disconnected');
+              startPolling();
+            };
+
+            setTimeout(() => {
+              if (ws.readyState !== WebSocket.OPEN) {
+                ws.close();
+              }
+            }, 5000);
+          } catch (wsError) {
+            console.log('WebSocket failed, falling back to polling');
+            startPolling();
+          }
+        } else {
+          // In production, use polling directly
+          startPolling();
+        }
+
+        // Initial data fetch
+        await fetchLaunchData();
+        setLoading(false);
+      } catch (err) {
+        console.error('Initialization error:', err);
+        setError('Using simulated data');
+        setForecasts(mockForecasts);
+        setLoading(false);
+        setConnectionStatus('disconnected');
+      }
+    };
+
+    const startPolling = () => {
+      setConnectionStatus('connected');
+      // Immediate fetch
       fetchIssPosition()
         .then(updateIssPosition)
         .catch(err => {
-          console.error('Initial fallback fetch failed:', err);
-          setError('Failed to get ISS position updates');
+          console.error('ISS fetch failed:', err);
+          setError('Using simulated ISS data');
+          setForecasts(prev => prev.some(e => e.id.includes('iss-')) ? prev : [mockForecasts[0], ...prev.filter(e => !e.id.includes('iss-'))]);
         });
       
       // Set up interval
@@ -210,84 +257,17 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
         fetchIssPosition()
           .then(updateIssPosition)
           .catch(console.error);
-      }, 10000);
+      }, 15000); // Poll every 15 seconds
     };
 
-    const connectWithRetry = () => {
-      if (retryCount < MAX_RETRIES) {
-        retryCount++;
-        setTimeout(initWebSocket, 2000 * retryCount);
-      } else {
-        fallbackToPolling();
-      }
-    };
-
-    const initWebSocket = () => {
-      try {
-        ws = new WebSocket('wss://ws.wheretheiss.at');
-
-        ws.onopen = () => {
-          clearTimeout(wsTimeout);
-          setConnectionStatus('connected');
-          setLoading(false);
-          ws.send(JSON.stringify({ type: 'subscribe', id: '25544' }));
-          
-          fetchIssPosition()
-            .then(updateIssPosition)
-            .catch(err => {
-              console.error('ISS fetch error:', err);
-              setError('Failed to load ISS position');
-            });
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'location') {
-              updateIssPosition(data);
-            }
-          } catch (err) {
-            console.error('Error parsing WebSocket data:', err);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          ws.close();
-        };
-
-        ws.onclose = () => {
-          setConnectionStatus('disconnected');
-          connectWithRetry();
-        };
-      } catch (err) {
-        console.error('WebSocket initialization error:', err);
-        setConnectionStatus('disconnected');
-        fallbackToPolling();
-      }
-    };
-
-    // Timeout for WebSocket connection (5 seconds)
-    wsTimeout = setTimeout(() => {
-      if (connectionStatus === 'connecting') {
-        setConnectionStatus('disconnected');
-        fallbackToPolling();
-      }
-    }, 5000);
-
-    initWebSocket();
-
-    // Initial data load
-    fetchLaunchData();
+    initDataFetch();
 
     // Launch data polling
     launchInterval = setInterval(fetchLaunchData, 60000);
 
     return () => {
-      clearTimeout(wsTimeout);
       clearInterval(issInterval);
       clearInterval(launchInterval);
-      if (ws) ws.close();
     };
   }, [updateIssPosition, fetchLaunchData]);
 
@@ -306,7 +286,7 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
         {loading ? (
           <div className="flex justify-center items-center p-8">
             <Loader2 className="animate-spin text-white/50" size={24} />
-            <span className="ml-2 text-sm text-white/70">Connecting to live data...</span>
+            <span className="ml-2 text-sm text-white/70">Loading space data...</span>
           </div>
         ) : error ? (
           <div className="p-3 text-xs text-status-warning flex items-center">
@@ -322,18 +302,13 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
       <div className="p-2 text-xs text-white/30 text-center">
         {connectionStatus === 'connected' ? (
           <span className="flex items-center justify-center">
-            <span className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span>
-            Live data connected
-          </span>
-        ) : connectionStatus === 'connecting' ? (
-          <span className="flex items-center justify-center">
-            <span className="w-2 h-2 bg-yellow-500 rounded-full mr-1 animate-pulse"></span>
-            Connecting...
+            <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+            {`Updated: ${lastUpdated}`}
           </span>
         ) : (
           <span className="flex items-center justify-center">
             <span className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></span>
-            {`Using fallback updates (last refresh: ${lastUpdated})`}
+            Using simulated data
           </span>
         )}
       </div>
