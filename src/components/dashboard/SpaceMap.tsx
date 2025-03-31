@@ -18,12 +18,13 @@ interface SpaceObject {
   status: 'operational' | 'warning' | 'danger';
   type: 'satellite' | 'debris';
   altitude?: number;
-  collisionRisk?: string;
+  collisionRisk?: 'Low' | 'Medium' | 'High' | 'None';
   collisionWith?: string[];
+  position?: THREE.Vector3;
 }
 
 // Collision detection thresholds
-const COLLISION_THRESHOLD = 0.15; // Immediate danger
+const COLLISION_THRESHOLD = 0.15;
 const HIGH_RISK_DISTANCE = 0.25;
 const MEDIUM_RISK_DISTANCE = 0.4;
 const LOW_RISK_DISTANCE = 0.6;
@@ -34,71 +35,110 @@ interface SpaceObjectWithPhysics extends SpaceObject {
   radius: number;
 }
 
-async function fetchNASASatelliteData() {
+// Cache for API responses
+const apiCache: Record<string, { data: any, timestamp: number }> = {};
+
+async function fetchWithCache(url: string, cacheKey: string, ttl = 60000) {
+  if (apiCache[cacheKey] && Date.now() - apiCache[cacheKey].timestamp < ttl) {
+    return apiCache[cacheKey].data;
+  }
+  
+  const response = await axios.get(url, { timeout: 10000 });
+  apiCache[cacheKey] = {
+    data: response.data,
+    timestamp: Date.now()
+  };
+  return response.data;
+}
+
+function generateMockSatelliteData(count: number): SpaceObject[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `mock-sat-${i}`,
+    name: `Satellite ${i+1}`,
+    lat: Math.random() * 180 - 90,
+    lng: Math.random() * 360 - 180,
+    status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)] as 'operational' | 'warning' | 'danger',
+    type: Math.random() > 0.7 ? 'debris' : 'satellite',
+    altitude: Math.random() * 2000 + 200,
+    collisionRisk: ['Low', 'Medium', 'High'][Math.floor(Math.random() * 3)] as 'Low' | 'Medium' | 'High'
+  }));
+}
+
+async function fetchNASASatelliteData(): Promise<SpaceObject[]> {
   try {
-    const response = await axios.get(
-      'https://api.nasa.gov/DONKI/notifications?api_key=DEMO_KEY'
+    const data = await fetchWithCache(
+      'https://api.nasa.gov/DONKI/notifications?api_key=DEMO_KEY',
+      'nasa-notifications'
     );
     
-    const nasaData = response.data.map((item: any) => ({
-      id: item.messageID,
-      name: item.messageType || 'NASA Object',
-      lat: Math.random() * 180 - 90,
-      lng: Math.random() * 360 - 180,
-      status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)],
-      type: Math.random() > 0.5 ? 'satellite' : 'debris',
-      altitude: Math.random() * 2000 + 200,
-      collisionRisk: 'Low'
-    }));
-
-    return nasaData;
+    if (data && Array.isArray(data)) {
+      return data.map((item: any) => ({
+        id: item.messageID,
+        name: item.messageType || 'NASA Object',
+        lat: Math.random() * 180 - 90,
+        lng: Math.random() * 360 - 180,
+        status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)] as 'operational' | 'warning' | 'danger',
+        type: Math.random() > 0.5 ? 'satellite' : 'debris',
+        altitude: Math.random() * 2000 + 200,
+        collisionRisk: 'Low' as const
+      }));
+    }
+    return generateMockSatelliteData(15);
   } catch (error) {
     console.error("Error fetching NASA data:", error);
-    return [];
+    return generateMockSatelliteData(15);
   }
 }
 
-async function fetchTLEData() {
+async function fetchTLEData(): Promise<SpaceObject[]> {
   try {
-    const response = await axios.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle');
-    const tleData = response.data.split('\n');
+    const tleData = await fetchWithCache(
+      'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
+      'celestrak-tle'
+    );
+    
+    if (!tleData) return generateMockSatelliteData(20);
+
+    const tleLines = typeof tleData === 'string' ? tleData.split('\n') : [];
     const satellites: SpaceObject[] = [];
     
-    for (let i = 0; i < tleData.length; i += 3) {
-      const name = tleData[i]?.trim() || `SAT-${i}`;
-      const tleLine1 = tleData[i+1];
-      const tleLine2 = tleData[i+2];
+    for (let i = 0; i < tleLines.length; i += 3) {
+      const name = tleLines[i]?.trim() || `SAT-${i}`;
+      const tleLine1 = tleLines[i+1];
+      const tleLine2 = tleLines[i+2];
       
       if (tleLine1 && tleLine2) {
-        const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
-        const positionAndVelocity = satellite.propagate(satrec, new Date());
-        
-        if (positionAndVelocity.position && typeof positionAndVelocity.position !== 'boolean') {
-          const gmst = satellite.gstime(new Date());
-          const positionGd = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
+        try {
+          const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
+          const positionAndVelocity = satellite.propagate(satrec, new Date());
           
-          satellites.push({
-            id: `sat-${i}`,
-            name,
-            lat: satellite.degreesLat(positionGd.latitude),
-            lng: satellite.degreesLong(positionGd.longitude),
-            altitude: positionGd.height,
-            status: 'operational',
-            type: 'satellite',
-            collisionRisk: 'Low'
-          });
+          if (positionAndVelocity.position && typeof positionAndVelocity.position !== 'boolean') {
+            const gmst = satellite.gstime(new Date());
+            const positionGd = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
+            
+            satellites.push({
+              id: `sat-${i}`,
+              name,
+              lat: satellite.degreesLat(positionGd.latitude),
+              lng: satellite.degreesLong(positionGd.longitude),
+              altitude: positionGd.height,
+              status: 'operational' as const,
+              type: 'satellite' as const,
+              collisionRisk: 'Low' as const
+            });
+          }
+        } catch (e) {
+          console.warn(`Error parsing TLE data for ${name}`, e);
         }
       }
     }
     
-    return satellites;
+    return satellites.length > 0 ? satellites : generateMockSatelliteData(20);
   } catch (error) {
     console.error("Error fetching TLE data:", error);
-    return [];
+    return generateMockSatelliteData(20);
   }
 }
-
-
 
 const latLongToVector3 = (lat: number, lon: number, radius: number) => {
   const phi = (90 - lat) * (Math.PI / 180);
@@ -114,9 +154,10 @@ const calculateDistance = (pos1: THREE.Vector3, pos2: THREE.Vector3) => {
   return pos1.distanceTo(pos2);
 };
 
-const AlertIcon = ({ position, riskLevel }: { 
+const AlertIcon = ({ position, riskLevel, onClick }: { 
   position: THREE.Vector3, 
-  riskLevel: 'High' | 'Medium' | 'Low' 
+  riskLevel: 'High' | 'Medium' | 'Low',
+  onClick: () => void
 }) => {
   const ref = useRef<THREE.Group>(null);
   const [opacity, setOpacity] = useState(1);
@@ -167,10 +208,15 @@ const AlertIcon = ({ position, riskLevel }: {
     <group ref={ref} position={[position.x, position.y, position.z]}>
       <Html center>
         <div 
-          className="flex items-center justify-center"
+          className="flex items-center justify-center cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
           style={{
             transform: `scale(${scale})`,
-            transition: 'transform 0.1s ease-out'
+            transition: 'transform 0.1s ease-out',
+            pointerEvents: 'auto' // Garante que o clique seja capturado
           }}
         >
           <div 
@@ -371,7 +417,7 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
   useEffect(() => {
     // Calculate all positions and velocities
     const objectsWithPhysics: SpaceObjectWithPhysics[] = spaceObjects.map(obj => {
-      const position = latLongToVector3(obj.lat, obj.lng, 2.2);
+      const position = obj.position || latLongToVector3(obj.lat, obj.lng, 2.2);
       
       // Simulate velocity - in a real app, this would come from TLE data
       const velocity = new THREE.Vector3(
@@ -498,6 +544,7 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
       const collisionData = collisionMap[obj.id];
       return {
         ...obj,
+        position: obj.position || latLongToVector3(obj.lat, obj.lng, 2.2),
         collisionRisk: collisionData.maxRisk || obj.collisionRisk || 'None',
         collisionWith: collisionData.names.length > 0 ? collisionData.names : undefined
       };
@@ -507,23 +554,54 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
     setCollisionPairs(newCollisionPairs.slice(0, 15)); // Limit to 15 most critical collisions
   }, [spaceObjects]);
 
-  const focusOnObject = (position: THREE.Vector3) => {
+  const focusOnObject = (objectPosition: THREE.Vector3) => {
     if (orbitControlsRef.current) {
+      const camera = orbitControlsRef.current.object;
+      const controls = orbitControlsRef.current;
+      
+      // 1. Calculamos a direção "para cima" relativa à superfície da Terra
+      const upVector = objectPosition.clone().normalize();
+      
+      // 2. Posicionamos a câmera 3 unidades acima do objeto, seguindo a normal da superfície
+      const distanceAbove = 3;
+      const targetCameraPosition = objectPosition.clone()
+        .add(upVector.multiplyScalar(distanceAbove));
+      
+      // 3. Calculamos a posição que mantém a Terra centralizada
       const earthCenter = new THREE.Vector3(0, 0, 0);
-      const direction = position.clone().sub(earthCenter).normalize();
       
-      const cameraDistance = 6;
-      const cameraPosition = direction.clone().multiplyScalar(cameraDistance);
-      cameraPosition.y += 1.5;
-      
-      gsap.to(orbitControlsRef.current.object.position, {
+      // 4. Configuração da animação
+      gsap.to(camera.position, {
+        x: targetCameraPosition.x,
+        y: targetCameraPosition.y,
+        z: targetCameraPosition.z,
         duration: 1.5,
-        x: cameraPosition.x,
-        y: cameraPosition.y,
-        z: cameraPosition.z,
         ease: "power2.inOut",
+        
+        onStart: () => {
+          controls.enabled = false;
+          controls.autoRotate = false;
+        },
+        
         onUpdate: () => {
-          orbitControlsRef.current!.target.set(0, 0, 0);
+          // Mantém o foco no centro da Terra
+          controls.target.copy(earthCenter);
+          
+          // Ajusta a câmera para olhar levemente para baixo
+          camera.lookAt(
+            objectPosition.x * 0.3,
+            objectPosition.y * 0.3,
+            objectPosition.z * 0.3
+          );
+          
+          controls.update();
+        },
+        
+        onComplete: () => {
+          // Ajuste fino para melhor visualização
+          controls.target.lerp(objectPosition, 0.1);
+          controls.update();
+          controls.enabled = true;
         }
       });
     }
@@ -541,7 +619,7 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
       <Atmosphere />
       
       {enhancedObjects.map((obj) => {
-        const pos = latLongToVector3(obj.lat, obj.lng, 2.2);
+        const pos = obj.position || latLongToVector3(obj.lat, obj.lng, 2.2);
         const showAlert = obj.collisionRisk && obj.collisionRisk !== 'None';
         
         let color;
@@ -577,8 +655,13 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
             
             {showAlert && (
               <AlertIcon 
-                position={new THREE.Vector3(pos.x * 1.1, pos.y * 1.1, pos.z * 1.1)}
+                position={new THREE.Vector3(
+                  pos.x * 1.05, 
+                  pos.y * 1.05, 
+                  pos.z * 1.05
+                )}
                 riskLevel={obj.collisionRisk as 'High' | 'Medium' | 'Low'}
+                onClick={() => focusOnObject(pos)}
               />
             )}
           </React.Fragment>
@@ -586,8 +669,8 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
       })}
       
       {collisionPairs.map((pair, i) => {
-        const pos1 = latLongToVector3(pair.obj1.lat, pair.obj1.lng, 2.2);
-        const pos2 = latLongToVector3(pair.obj2.lat, pair.obj2.lng, 2.2);
+        const pos1 = pair.obj1.position || latLongToVector3(pair.obj1.lat, pair.obj1.lng, 2.2);
+        const pos2 = pair.obj2.position || latLongToVector3(pair.obj2.lat, pair.obj2.lng, 2.2);
         
         return (
           <CollisionLine 
@@ -606,29 +689,32 @@ const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
   const orbitControlsRef = useRef<any>(null);
   const [spaceObjects, setSpaceObjects] = useState<SpaceObject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    async function loadData() {
+    const loadData = async () => {
       try {
+        setLoading(true);
+        setError('');
+        
         // Try NASA API first
         let data = await fetchNASASatelliteData();
         
-        // Fall back to Celestrak
+        // Fall back to Celestrak if NASA returns empty
         if (data.length === 0) {
           data = await fetchTLEData();
         }
         
-
-        
         setSpaceObjects(data);
-      } catch (error) {
-        console.error("Error loading space data:", error);
-  
+      } catch (err) {
+        console.error("Data loading failed:", err);
+        setError('Failed to load live data. Showing mock satellites.');
+        setSpaceObjects(generateMockSatelliteData(25));
       } finally {
         setLoading(false);
       }
-    }
-    
+    };
+
     loadData();
     
     // Refresh data every 5 minutes
@@ -641,6 +727,12 @@ const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
           <div className="text-white">Loading space data...</div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-500/80 text-white px-4 py-2 rounded-lg z-10">
+          {error}
         </div>
       )}
       
