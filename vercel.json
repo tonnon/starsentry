@@ -1,5 +1,10 @@
-{
-    "rewrites": [
-      { "source": "/(.*)", "destination": "/index.html" }
-    ]
-  }
+  {
+      "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+      ],
+      "build": {
+        "env": {
+          "VITE_NASA_API_KEY": "$VITE_NASA_API_KEY"
+        }
+      }
+    }
