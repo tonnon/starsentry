@@ -1,10 +1,13 @@
-  {
-      "rewrites": [
-        { "source": "/(.*)", "destination": "/index.html" }
-      ],
-      "build": {
-        "env": {
-          "VITE_NASA_API_KEY": "$VITE_NASA_API_KEY"
-        }
-      }
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "build": {
+    "env": {
+      "VITE_NASA_API_KEY": "$VITE_NASA_API_KEY"
     }
+  },
+  "env": {
+    "VITE_NASA_API_KEY": "$VITE_NASA_API_KEY"
+  }
+}
