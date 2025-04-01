@@ -97,7 +97,7 @@ type Settings = {
             },
           });
         } catch (e) {
-          console.error('Failed to parse saved settings', e);
+          ''
         }
       }
       setIsLoaded(true);

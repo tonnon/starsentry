@@ -26,7 +26,6 @@ const Dashboard = () => {
         setSpaceData(data);
       } catch (err) {
         setError('Failed to load NASA data');
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -37,8 +36,6 @@ const Dashboard = () => {
     const interval = setInterval(loadData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
-
-  /* if (loading) return <div>Loading space data...</div>; */
   
   return (
     <div className="min-h-screen bg-space text-white flex">
@@ -56,25 +53,25 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <InfoCard 
               title="Active Satellites" 
-              value={spaceData.activeSatellites.toLocaleString()} 
+              value={ loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.activeSatellites.toLocaleString()} 
               icon={<Satellite size={20} />}
               trend={{ value: 3.8, isPositive: true }}
             />
             <InfoCard 
               title="Tracked Debris" 
-              value={spaceData.trackedDebris.toLocaleString()} 
+              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.trackedDebris.toLocaleString()} 
               icon={<Radar size={20} />}
               trend={{ value: 2.1, isPositive: false }}
             />
             <InfoCard 
               title="Collision Alerts" 
-              value={spaceData.collisionAlerts.toString()} 
+              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.collisionAlerts.toString()} 
               icon={<AlertTriangle size={20} />}
               trend={{ value: 12.5, isPositive: false }}
             />
             <InfoCard 
               title="Orbit Adjustments" 
-              value={spaceData.orbitAdjustments.toString()} 
+              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.orbitAdjustments.toString()} 
               icon={<Shield size={20} />}
               trend={{ value: 5.2, isPositive: true }}
             />

@@ -569,7 +569,7 @@ const CollisionPredictions: React.FC = () => {
       // Save PDF
       pdf.save(`collision-report-${analysisResult?.predictionId || 'unknown'}.pdf`);
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      ''
     } finally {
       setIsGeneratingPDF(false);
     }

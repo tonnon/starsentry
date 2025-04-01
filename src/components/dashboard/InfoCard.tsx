@@ -3,7 +3,7 @@ import React, { ReactNode } from 'react';
 
 interface InfoCardProps {
   title: string;
-  value: string | number;
+  value: React.ReactNode;
   icon: ReactNode;
   trend?: {
     value: number;

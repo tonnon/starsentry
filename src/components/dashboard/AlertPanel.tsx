@@ -614,7 +614,6 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ className = '' }) => {
         // Randomly succeed or fail for demonstration
         const success = Math.random() > 0.2;
         if (success) {
-          console.log(`Notification sent for alert: ${alert.id}`);
           resolve();
         } else {
           reject(new Error('Failed to send notification'));

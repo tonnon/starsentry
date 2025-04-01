@@ -148,10 +148,12 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
   const [forecasts, setForecasts] = useState<ForecastEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [visibleItems, setVisibleItems] = useState(3);
+  const [retryCount, setRetryCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const issIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const launchIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced mock data with details
   const mockForecasts: ForecastEvent[] = [
@@ -263,13 +265,15 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
         ...otherEvents
       ];
     });
-    setVisibleItems(3); // Reset visible items when data updates
+    setVisibleItems(3);
   }, []);
 
   const fetchIssPosition = async () => {
     try {
+      // Try primary API first
       const response = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
-      if (!response.ok) throw new Error('API failed');
+      if (!response.ok) throw new Error('Primary API failed');
+      
       const data = await response.json();
       return {
         latitude: data.latitude,
@@ -277,9 +281,23 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
         altitude: data.altitude,
         velocity: data.velocity
       };
-    } catch (err) {
-      console.error('ISS fetch failed:', err);
-      throw err;
+    } catch (primaryError) {
+
+      
+      // Fallback to backup API
+      try {
+        const backupResponse = await fetch('https://api.open-notify.org/iss-now.json');
+        const backupData = await backupResponse.json();
+        
+        return {
+          latitude: backupData.iss_position.latitude,
+          longitude: backupData.iss_position.longitude,
+          altitude: 408, // Default value
+          velocity: 7.66 // Default value
+        };
+      } catch (backupError) {
+        throw backupError;
+      }
     }
   };
 
@@ -308,93 +326,60 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
       });
       setVisibleItems(3);
     } catch (err) {
-      console.error('Error fetching launches:', err);
       setError('Using cached launch data');
       setForecasts(prev => prev.length > 0 ? prev : mockForecasts);
     }
   }, []);
 
-  useEffect(() => {
-    let issInterval: NodeJS.Timeout;
-    let launchInterval: NodeJS.Timeout;
+  const startPolling = useCallback(() => {
+    // Initial fetch
+    fetchIssPosition()
+      .then(updateIssPosition)
+      .catch(err => {
+        setError('Using simulated ISS data');
+        setForecasts(prev => prev.some(e => e.id.includes('iss-')) ? prev : [mockForecasts[0], ...prev.filter(e => !e.id.includes('iss-'))]);
+      });
+    
+    // Set up interval for polling
+    issIntervalRef.current = setInterval(() => {
+      fetchIssPosition()
+        .then(updateIssPosition)
+    }, 15000);
+  }, [updateIssPosition]);
 
+  const retryConnection = useCallback(() => {
+    setRetryCount(prev => prev + 1);
+    setError(null);
+    setLoading(true);
+  }, []);
+
+  useEffect(() => {
     const initDataFetch = async () => {
       try {
-        if (process.env.NODE_ENV !== 'production') {
-          try {
-            const ws = new WebSocket('wss://ws.wheretheiss.at');
-            
-            ws.onopen = () => {
-              setConnectionStatus('connected');
-              ws.send(JSON.stringify({ type: 'subscribe', id: '25544' }));
-            };
-
-            ws.onmessage = (event) => {
-              try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'location') {
-                  updateIssPosition(data);
-                }
-              } catch (err) {
-                console.error('Error parsing WebSocket data:', err);
-              }
-            };
-
-            ws.onclose = () => {
-              setConnectionStatus('disconnected');
-              startPolling();
-            };
-
-            setTimeout(() => {
-              if (ws.readyState !== WebSocket.OPEN) {
-                ws.close();
-              }
-            }, 5000);
-          } catch (wsError) {
-            console.log('WebSocket failed, falling back to polling');
-            startPolling();
-          }
-        } else {
-          startPolling();
-        }
-
+        // Start polling for ISS data
+        startPolling();
+        
+        // Fetch initial launch data
         await fetchLaunchData();
         setLoading(false);
       } catch (err) {
-        console.error('Initialization error:', err);
         setError('Using simulated data');
         setForecasts(mockForecasts);
         setLoading(false);
-        setConnectionStatus('disconnected');
       }
-    };
-
-    const startPolling = () => {
-      setConnectionStatus('connected');
-      fetchIssPosition()
-        .then(updateIssPosition)
-        .catch(err => {
-          console.error('ISS fetch failed:', err);
-          setError('Using simulated ISS data');
-          setForecasts(prev => prev.some(e => e.id.includes('iss-')) ? prev : [mockForecasts[0], ...prev.filter(e => !e.id.includes('iss-'))]);
-        });
-      
-      issInterval = setInterval(() => {
-        fetchIssPosition()
-          .then(updateIssPosition)
-          .catch(console.error);
-      }, 15000);
     };
 
     initDataFetch();
 
-    launchInterval = setInterval(fetchLaunchData, 60000);
+    // Set up interval for launch data
+    launchIntervalRef.current = setInterval(fetchLaunchData, 60000);
 
+    // Cleanup function
     return () => {
-      clearInterval(issInterval);
-      clearInterval(launchInterval);
+      if (issIntervalRef.current) clearInterval(issIntervalRef.current);
+      if (launchIntervalRef.current) clearInterval(launchIntervalRef.current);
     };
-  }, [updateIssPosition, fetchLaunchData]);
+  }, [retryCount, startPolling, fetchLaunchData]);
 
   return (
     <div className={`glass-panel ${className}`}>
@@ -415,37 +400,38 @@ const ForecastPanel = ({ className = '' }: { className?: string }) => {
         }}
       >
         {loading ? (
-          <div className="flex justify-center items-center p-8">
+          <div className="flex flex-col items-center justify-center p-8 gap-2">
             <Loader2 className="animate-spin text-white/50" size={24} />
-            <span className="ml-2 text-sm text-white/70">Loading space data...</span>
+            <span className="text-sm text-white/70">Loading space data...</span>
           </div>
         ) : error ? (
-          <div className="p-3 text-xs text-status-warning flex items-center">
-            <Activity className="mr-1" size={14} />
-            {error}
+          <div className="p-4 flex flex-col items-center gap-2">
+            <div className="text-status-warning flex items-center">
+              <Activity className="mr-1" size={14} />
+              {error}
+            </div>
+            <button
+              onClick={retryConnection}
+              className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1 rounded transition-colors"
+            >
+              Retry Connection
+            </button>
           </div>
         ) : (
           forecasts.map((event, index) => (
             <ForecastItem 
               key={event.id} 
               event={event} 
-              isVisible={true} // All items are visible, animation controlled by scroll
+              isVisible={index < visibleItems}
             />
           ))
         )}
       </div>
       <div className="p-2 text-xs text-white/30 text-center">
-        {connectionStatus === 'connected' ? (
-          <span className="flex items-center justify-center">
-            <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
-            {`Updated: ${lastUpdated}`}
-          </span>
-        ) : (
-          <span className="flex items-center justify-center">
-            <span className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></span>
-            Using simulated data
-          </span>
-        )}
+        <span className="flex items-center justify-center">
+          <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+          {`Updated: ${lastUpdated}`}
+        </span>
       </div>
     </div>
   );
