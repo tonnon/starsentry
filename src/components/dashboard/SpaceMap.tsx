@@ -29,26 +29,54 @@ interface SpaceObjectWithPhysics extends SpaceObject {
   radius: number;
 }
 
-// Enhanced NASA API key handling
+const NASA_API_BASE_URL = 'https://api.nasa.gov';
+
+// Improved API key handling
 const getNASAKey = () => {
-  // 1. Try Vite's client-side env vars
-  if (import.meta.env.VITE_NASA_API_KEY) {
-    console.log('Using VITE_NASA_API_KEY from import.meta.env');
-    return import.meta.env.VITE_NASA_API_KEY;
-  }
+  // Try multiple ways to get the API key
+  const key = import.meta.env.VITE_NASA_API_KEY || 
+              process.env.VITE_NASA_API_KEY || 
+              'DEMO_KEY'; // Fallback to demo key
   
-  // 2. Try process.env (for SSR or fallback)
-  if (process.env.VITE_NASA_API_KEY) {
-    console.log('Using VITE_NASA_API_KEY from process.env');
-    return process.env.VITE_NASA_API_KEY;
-  }
-  
-  // 3. Fallback to demo key
-  console.warn('Using DEMO_KEY - no API key found in environment');
-  return 'DEMO_KEY';
+  console.log('Using NASA API key:', key === 'DEMO_KEY' ? 'DEMO_KEY' : 'CUSTOM_KEY');
+  return key;
 };
 
 const NASA_API_KEY = getNASAKey();
+
+// Enhanced fetch function with multiple fallbacks
+async function fetchNASAData(endpoint: string, params = {}) {
+  const url = `${NASA_API_BASE_URL}${endpoint}`;
+  
+  try {
+    // First try with axios params
+    const response = await axios.get(url, {
+      params: {
+        ...params,
+        api_key: NASA_API_KEY
+      },
+      timeout: 10000
+    });
+    return response.data;
+  } catch (error) {
+    // If params fail, try with URL-based key
+    try {
+      const urlWithKey = `${url}?api_key=${NASA_API_KEY}`;
+      const response = await axios.get(urlWithKey, { timeout: 10000 });
+      return response.data;
+    } catch (fallbackError) {
+      // If both fail, try without API key (some endpoints might work)
+      try {
+        const response = await axios.get(url, { timeout: 10000 });
+        return response.data;
+      } catch (finalError) {
+        console.error(`Failed to fetch ${url} after multiple attempts`);
+        throw finalError;
+      }
+    }
+  }
+} 
+
 const CACHE_TTL = 30 * 60 * 1000;
 const REFRESH_INTERVAL = 30 * 60 * 1000;
 const MAX_COLLISION_PAIRS = 15;
@@ -110,25 +138,14 @@ function generateMockSatelliteData(count: number): SpaceObject[] {
   }));
 }
 
-// Enhanced NASA API fetch with multiple fallbacks
+// Updated NASA Satellite Data Fetch
 async function fetchNASASatelliteData(): Promise<SpaceObject[]> {
   try {
-    let data;
-    
-    // Method 1: Using axios params
-    try {
-      const response = await axios.get('https://api.nasa.gov/DONKI/notifications', {
-        params: { api_key: NASA_API_KEY }
-      });
-      data = response.data;
-    } catch (paramsError) {
-      // Method 2: Fallback to URL-based API key
-      console.log('Falling back to URL-based API key');
-      data = await fetchWithCache(
-        `https://api.nasa.gov/DONKI/notifications?api_key=${NASA_API_KEY}`,
-        'nasa-notifications'
-      );
-    }
+    const data = await fetchNASAData('/DONKI/notifications', {
+      type: 'satellite',
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0]
+    });
     
     if (data && Array.isArray(data)) {
       return data.map((item: any) => ({
@@ -768,8 +785,6 @@ const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
       try {
         setLoading(true);
         setError('');
-        
-        console.log('Current NASA_API_KEY:', NASA_API_KEY === 'DEMO_KEY' ? 'DEMO_KEY' : 'CUSTOM_KEY');
         
         // Try NASA API first
         let data = await fetchNASASatelliteData();
