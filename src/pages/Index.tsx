@@ -5,44 +5,41 @@ import AlertPanel from '../components/dashboard/AlertPanel';
 import ForecastPanel from '../components/dashboard/ForecastPanel';
 import InfoCard from '../components/dashboard/InfoCard';
 import Sidebar from '../components/sidebar/Sidebar';
-import { fetchSpaceData } from '@/services/nasaService';
 
 const Dashboard = () => {
+  // Mock data
+  const mockSpaceData = {
+    activeSatellites: 4523,
+    trackedDebris: 28754,
+    collisionAlerts: 18,
+    orbitAdjustments: 23
+  };
 
-  const [spaceData, setSpaceData] = useState({
-    activeSatellites: 0,
-    trackedDebris: 0,
-    collisionAlerts: 0,
-    orbitAdjustments: 0
-  });
-  const [loading, setLoading] = useState(true);
+  const [spaceData, setSpaceData] = useState(mockSpaceData);
+  const [loading, setLoading] = useState(false); // No loading needed with mock data
   const [error, setError] = useState('');
 
+  // No need for useEffect with API calls since we're using mock data
+  // Keeping this in case you want to simulate loading/refreshing
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const data = await fetchSpaceData();
-        setSpaceData(data);
-      } catch (err) {
-        setError('Failed to load NASA data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-    // Atualiza a cada 5 minutos
-    const interval = setInterval(loadData, 5 * 60 * 1000);
+    // Simulate data refresh every 5 minutes
+    const interval = setInterval(() => {
+      // You could add small random variations to the mock data here
+      setSpaceData({
+        ...mockSpaceData,
+        collisionAlerts: mockSpaceData.collisionAlerts + Math.floor(Math.random() * 3 - 1), // Random +/- 1
+        orbitAdjustments: mockSpaceData.orbitAdjustments + Math.floor(Math.random() * 2)
+      });
+    }, 5 * 60 * 1000);
+    
     return () => clearInterval(interval);
   }, []);
-  
+
   return (
     <div className="min-h-screen bg-space text-white flex">
       <Sidebar />
       
       <div className="flex-1">
-        {/* Main Content */}
         <div className="p-6">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-glow">Live Tracking</h1>
@@ -53,31 +50,31 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <InfoCard 
               title="Active Satellites" 
-              value={ loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.activeSatellites.toLocaleString()} 
+              value={spaceData.activeSatellites.toLocaleString()} 
               icon={<Satellite size={20} />}
               trend={{ value: 3.8, isPositive: true }}
             />
             <InfoCard 
               title="Tracked Debris" 
-              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.trackedDebris.toLocaleString()} 
+              value={spaceData.trackedDebris.toLocaleString()} 
               icon={<Radar size={20} />}
               trend={{ value: 2.1, isPositive: false }}
             />
             <InfoCard 
               title="Collision Alerts" 
-              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.collisionAlerts.toString()} 
+              value={spaceData.collisionAlerts.toString()} 
               icon={<AlertTriangle size={20} />}
               trend={{ value: 12.5, isPositive: false }}
             />
             <InfoCard 
               title="Orbit Adjustments" 
-              value={loading ? <div className="h-6 w-20 bg-gray-700 rounded animate-pulse" /> : spaceData.orbitAdjustments.toString()} 
+              value={spaceData.orbitAdjustments.toString()} 
               icon={<Shield size={20} />}
               trend={{ value: 5.2, isPositive: true }}
             />
           </div>
-      
-      {error && <div className="text-red-500">{error}</div>}
+          
+          {error && <div className="text-red-500 mb-4">{error}</div>}
           
           {/* Main Dashboard Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

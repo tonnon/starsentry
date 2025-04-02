@@ -3,8 +3,6 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars, useTexture, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import gsap from 'gsap';
-import axios from 'axios';
-import * as satellite from 'satellite.js';
 
 interface SpaceMapProps {
   className?: string;
@@ -29,86 +27,12 @@ interface SpaceObjectWithPhysics extends SpaceObject {
   radius: number;
 }
 
-const NASA_API_BASE_URL = import.meta.env.MODE === 'development' 
-  ? '/nasa-api' 
-  : 'https://api.nasa.gov';
-
-const getNASAKey = () => {
-  const key = import.meta.env.VITE_NASA_API_KEY || 'DEMO_KEY';
-  if (key === 'DEMO_KEY') {
-    console.warn('Using DEMO_KEY which has strict rate limits. For production use, obtain your own key from api.nasa.gov');
-  }
-  return key;
-};
-
-const NASA_API_KEY = getNASAKey();
-
-// Enhanced fetch function with multiple fallbacks
-async function fetchNASAData(endpoint: string, params = {}) {
-  const url = new URL(endpoint, NASA_API_BASE_URL);
-  
-  // In production, add API key directly
-  if (import.meta.env.MODE !== 'development' && NASA_API_KEY !== 'DEMO_KEY') {
-    url.searchParams.append('api_key', NASA_API_KEY);
-  }
-
-  // Add additional params
-  Object.entries(params).forEach(([key, value]) => {
-    url.searchParams.append(key, String(value));
-  });
-
-  try {
-    const response = await axios.get(url.toString(), {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    return response.data;
-  } catch (error) {
-    console.error(`NASA API fetch error for ${url.toString()}`, error);
-    throw error;
-  }
-}
-
-
-const CACHE_TTL = 30 * 60 * 1000;
-const REFRESH_INTERVAL = 30 * 60 * 1000;
 const MAX_COLLISION_PAIRS = 15;
 
-const apiCache: Record<string, { data: any, timestamp: number }> = {};
-
-// Enhanced fetch function with better error handling
-async function fetchWithCache(url: string, cacheKey: string, ttl = CACHE_TTL) {
-  if (apiCache[cacheKey] && Date.now() - apiCache[cacheKey].timestamp < ttl) {
-    return apiCache[cacheKey].data;
-  }
-  
-  try {
-    const fullUrl = url.startsWith('http') ? url : `${NASA_API_BASE_URL}${url}`;
-    const response = await axios.get(fullUrl, { 
-      timeout: 10000,
-      params: fullUrl.includes('api.nasa.gov') ? { api_key: NASA_API_KEY } : undefined
-    });
-    
-    apiCache[cacheKey] = {
-      data: response.data,
-      timestamp: Date.now()
-    };
-    return response.data;
-  } catch (error) {
-    if (apiCache[cacheKey]) {
-      console.log('Returning cached data after error');
-      return apiCache[cacheKey].data;
-    }
-    throw error;
-  }
-}
-
-// Mock data generator
+// Mock data generator - now the primary data source
 function generateMockSatelliteData(count: number): SpaceObject[] {
   return Array.from({ length: count }, (_, i) => ({
-    id: `mock-sat-${i}`,
+    id: `sat-${i}`,
     name: `Satellite ${i+1}`,
     lat: Math.random() * 180 - 90,
     lng: Math.random() * 360 - 180,
@@ -117,102 +41,6 @@ function generateMockSatelliteData(count: number): SpaceObject[] {
     altitude: Math.random() * 2000 + 200,
     collisionRisk: ['Low', 'Medium', 'High', 'None'][Math.floor(Math.random() * 4)] as 'High' | 'Medium' | 'Low' | 'None'
   }));
-}
-
-function processNASAData(data: any[]): SpaceObject[] {
-  return data.map((item) => ({
-    id: item.messageID || item.id || Math.random().toString(36).substring(7),
-    name: item.messageType || item.name || 'NASA Object',
-    lat: item.lat || Math.random() * 180 - 90,
-    lng: item.lng || Math.random() * 360 - 180,
-    status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)] as 'operational' | 'warning' | 'danger',
-    type: Math.random() > 0.5 ? 'satellite' : 'debris',
-    altitude: item.alt || Math.random() * 2000 + 200,
-    collisionRisk: 'None'
-  }));
-}
-
-async function fetchNASASatelliteData(): Promise<SpaceObject[]> {
-  try {
-    // Try multiple NASA endpoints
-    const endpoints = [
-      '/DONKI/notifications',
-      '/neo/rest/v1/feed',
-      '/DONKI/CME'
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const data = await fetchNASAData(endpoint, {
-          type: 'satellite',
-          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          endDate: new Date().toISOString().split('T')[0]
-        });
-        
-        if (data && Array.isArray(data)) {
-          return processNASAData(data);
-        }
-      } catch (e) {
-        console.log(`Failed with endpoint ${endpoint}, trying next`);
-      }
-    }
-    
-    return generateMockSatelliteData(15);
-  } catch (error) {
-    console.error('All NASA API attempts failed:', error);
-    return generateMockSatelliteData(15);
-  }
-}
-
-// Fetch TLE data from Celestrak
-async function fetchTLEData(): Promise<SpaceObject[]> {
-  try {
-    const tleData = await fetchWithCache(
-      'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
-      'celestrak-tle'
-    );
-    
-    if (!tleData) return generateMockSatelliteData(20);
-
-    const tleLines = typeof tleData === 'string' ? tleData.split('\n') : [];
-    const satellites: SpaceObject[] = [];
-    
-    for (let i = 0; i < tleLines.length; i += 3) {
-      const name = tleLines[i]?.trim() || `SAT-${i}`;
-      const tleLine1 = tleLines[i+1];
-      const tleLine2 = tleLines[i+2];
-      
-      if (tleLine1 && tleLine2) {
-        try {
-          const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
-          const positionAndVelocity = satellite.propagate(satrec, new Date());
-          
-          if (positionAndVelocity.position && typeof positionAndVelocity.position !== 'boolean') {
-            const gmst = satellite.gstime(new Date());
-            const positionGd = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
-            
-            satellites.push({
-              id: `sat-${i}`,
-              name,
-              lat: satellite.degreesLat(positionGd.latitude),
-              lng: satellite.degreesLong(positionGd.longitude),
-              altitude: positionGd.height,
-              status: 'operational',
-              type: 'satellite',
-              collisionRisk: 'None'
-            });
-          }
-        } catch (e) {
-          console.error('Error parsing TLE data:', e);
-        }
-      }
-    }
-    
-    return satellites.length > 0 ? satellites : generateMockSatelliteData(20);
-  } catch (error) {
-    console.error('Celestrak API fetch error:', error);
-    return generateMockSatelliteData(20);
-  }
 }
 
 // Coordinate conversion
@@ -775,52 +603,16 @@ const Scene = ({ orbitControlsRef, spaceObjects }: {
 const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
   const orbitControlsRef = useRef<any>(null);
   const [spaceObjects, setSpaceObjects] = useState<SpaceObject[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // No loading needed with mock data
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        
-        // Try NASA API first
-        let data = await fetchNASASatelliteData();
-        
-        // If NASA data is empty or looks like mock data, try Celestrak
-        if (data.length <= 15 || data.some(item => item.id.startsWith('mock-'))) {
-          const celestrakData = await fetchTLEData();
-          data = [...data, ...celestrakData].slice(0, 50); // Combine but limit
-        }
-        
-        setSpaceObjects(data);
-      } catch (err) {
-        const errorMsg = NASA_API_KEY === 'DEMO_KEY' 
-          ? 'DEMO_KEY rate limit exceeded. Showing mock data.' 
-          : 'Failed to load live data. Showing mock satellites.';
-        
-        setError(errorMsg);
-        setSpaceObjects(generateMockSatelliteData(25));
-      } finally {
-        setLoading(false);
-      }
-    };
-  
-    loadData();
-    
-    // Update data every 30 minutes
-    const interval = setInterval(loadData, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
-  }, [NASA_API_KEY]);
+    // Generate mock data on component mount
+    setSpaceObjects(generateMockSatelliteData(25));
+  }, []);
 
   return (
     <div className={`rounded-xl overflow-hidden relative ${className}`}>
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-          <div className="text-white">Loading space data...</div>
-        </div>
-      )}
-      
       {error && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-500/80 text-white px-4 py-2 rounded-lg z-10">
           {error}
