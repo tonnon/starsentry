@@ -29,16 +29,15 @@ interface SpaceObjectWithPhysics extends SpaceObject {
   radius: number;
 }
 
-const NASA_API_BASE_URL = 'https://api.nasa.gov';
+const NASA_API_BASE_URL = import.meta.env.MODE === 'development' 
+  ? '/nasa-api' 
+  : 'https://api.nasa.gov';
 
-// Improved API key handling
 const getNASAKey = () => {
-  // Try multiple ways to get the API key
-  const key = import.meta.env.VITE_NASA_API_KEY || 
-              process.env.VITE_NASA_API_KEY || 
-              'DEMO_KEY'; // Fallback to demo key
-  
-  console.log('Using NASA API key:', key === 'DEMO_KEY' ? 'DEMO_KEY' : 'CUSTOM_KEY');
+  const key = import.meta.env.VITE_NASA_API_KEY || 'DEMO_KEY';
+  if (key === 'DEMO_KEY') {
+    console.warn('Using DEMO_KEY which has strict rate limits. For production use, obtain your own key from api.nasa.gov');
+  }
   return key;
 };
 
@@ -46,36 +45,32 @@ const NASA_API_KEY = getNASAKey();
 
 // Enhanced fetch function with multiple fallbacks
 async function fetchNASAData(endpoint: string, params = {}) {
-  const url = `${NASA_API_BASE_URL}${endpoint}`;
+  const url = new URL(endpoint, NASA_API_BASE_URL);
   
+  // In production, add API key directly
+  if (import.meta.env.MODE !== 'development' && NASA_API_KEY !== 'DEMO_KEY') {
+    url.searchParams.append('api_key', NASA_API_KEY);
+  }
+
+  // Add additional params
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.append(key, String(value));
+  });
+
   try {
-    // First try with axios params
-    const response = await axios.get(url, {
-      params: {
-        ...params,
-        api_key: NASA_API_KEY
-      },
-      timeout: 10000
+    const response = await axios.get(url.toString(), {
+      timeout: 10000,
+      headers: {
+        'Accept': 'application/json',
+      }
     });
     return response.data;
   } catch (error) {
-    // If params fail, try with URL-based key
-    try {
-      const urlWithKey = `${url}?api_key=${NASA_API_KEY}`;
-      const response = await axios.get(urlWithKey, { timeout: 10000 });
-      return response.data;
-    } catch (fallbackError) {
-      // If both fail, try without API key (some endpoints might work)
-      try {
-        const response = await axios.get(url, { timeout: 10000 });
-        return response.data;
-      } catch (finalError) {
-        console.error(`Failed to fetch ${url} after multiple attempts`);
-        throw finalError;
-      }
-    }
+    console.error(`NASA API fetch error for ${url.toString()}`, error);
+    throw error;
   }
-} 
+}
+
 
 const CACHE_TTL = 30 * 60 * 1000;
 const REFRESH_INTERVAL = 30 * 60 * 1000;
@@ -90,10 +85,10 @@ async function fetchWithCache(url: string, cacheKey: string, ttl = CACHE_TTL) {
   }
   
   try {
-    // First try with proper axios params
-    const response = await axios.get(url, { 
+    const fullUrl = url.startsWith('http') ? url : `${NASA_API_BASE_URL}${url}`;
+    const response = await axios.get(fullUrl, { 
       timeout: 10000,
-      params: url.includes('api.nasa.gov') ? { api_key: NASA_API_KEY } : undefined
+      params: fullUrl.includes('api.nasa.gov') ? { api_key: NASA_API_KEY } : undefined
     });
     
     apiCache[cacheKey] = {
@@ -102,20 +97,6 @@ async function fetchWithCache(url: string, cacheKey: string, ttl = CACHE_TTL) {
     };
     return response.data;
   } catch (error) {
-    // If we got a 403, try without API key (some endpoints don't need it)
-    if (axios.isAxiosError(error) && error.response?.status === 403) {
-      try {
-        const fallbackResponse = await axios.get(url, { timeout: 10000 });
-        apiCache[cacheKey] = {
-          data: fallbackResponse.data,
-          timestamp: Date.now()
-        };
-        return fallbackResponse.data;
-      } catch (fallbackError) {
-        console.error(`Fallback fetch failed for ${url}:`, fallbackError);
-      }
-    }
-    
     if (apiCache[cacheKey]) {
       console.log('Returning cached data after error');
       return apiCache[cacheKey].data;
@@ -138,30 +119,47 @@ function generateMockSatelliteData(count: number): SpaceObject[] {
   }));
 }
 
-// Updated NASA Satellite Data Fetch
+function processNASAData(data: any[]): SpaceObject[] {
+  return data.map((item) => ({
+    id: item.messageID || item.id || Math.random().toString(36).substring(7),
+    name: item.messageType || item.name || 'NASA Object',
+    lat: item.lat || Math.random() * 180 - 90,
+    lng: item.lng || Math.random() * 360 - 180,
+    status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)] as 'operational' | 'warning' | 'danger',
+    type: Math.random() > 0.5 ? 'satellite' : 'debris',
+    altitude: item.alt || Math.random() * 2000 + 200,
+    collisionRisk: 'None'
+  }));
+}
+
 async function fetchNASASatelliteData(): Promise<SpaceObject[]> {
   try {
-    const data = await fetchNASAData('/DONKI/notifications', {
-      type: 'satellite',
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      endDate: new Date().toISOString().split('T')[0]
-    });
+    // Try multiple NASA endpoints
+    const endpoints = [
+      '/DONKI/notifications',
+      '/neo/rest/v1/feed',
+      '/DONKI/CME'
+    ];
     
-    if (data && Array.isArray(data)) {
-      return data.map((item: any) => ({
-        id: item.messageID,
-        name: item.messageType || 'NASA Object',
-        lat: Math.random() * 180 - 90,
-        lng: Math.random() * 360 - 180,
-        status: ['operational', 'warning', 'danger'][Math.floor(Math.random() * 3)] as 'operational' | 'warning' | 'danger',
-        type: Math.random() > 0.5 ? 'satellite' : 'debris',
-        altitude: Math.random() * 2000 + 200,
-        collisionRisk: 'None'
-      }));
+    for (const endpoint of endpoints) {
+      try {
+        const data = await fetchNASAData(endpoint, {
+          type: 'satellite',
+          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0]
+        });
+        
+        if (data && Array.isArray(data)) {
+          return processNASAData(data);
+        }
+      } catch (e) {
+        console.log(`Failed with endpoint ${endpoint}, trying next`);
+      }
     }
+    
     return generateMockSatelliteData(15);
   } catch (error) {
-    console.error('NASA API fetch error:', error);
+    console.error('All NASA API attempts failed:', error);
     return generateMockSatelliteData(15);
   }
 }
@@ -789,10 +787,10 @@ const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
         // Try NASA API first
         let data = await fetchNASASatelliteData();
         
-        // Fallback to Celestrak if NASA returns empty
-        if (data.length === 0) {
-          setError('NASA API returned empty data, using Celestrak fallback');
-          data = await fetchTLEData();
+        // If NASA data is empty or looks like mock data, try Celestrak
+        if (data.length <= 15 || data.some(item => item.id.startsWith('mock-'))) {
+          const celestrakData = await fetchTLEData();
+          data = [...data, ...celestrakData].slice(0, 50); // Combine but limit
         }
         
         setSpaceObjects(data);
@@ -807,7 +805,7 @@ const SpaceMap: React.FC<SpaceMapProps> = ({ className = '' }) => {
         setLoading(false);
       }
     };
-
+  
     loadData();
     
     // Update data every 30 minutes

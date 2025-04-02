@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env vars based on mode (development/production)
   const env = loadEnv(mode, process.cwd(), '');
@@ -10,7 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       proxy: {
-        // Proxy NASA API requests through your dev server to avoid CORS issues
+        // Proxy NASA API requests through your dev server
         '/nasa-api': {
           target: 'https://api.nasa.gov',
           changeOrigin: true,
@@ -46,14 +45,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VITE_NASA_API_KEY': JSON.stringify(env.VITE_NASA_API_KEY),
       // Global environment indicator
       'import.meta.env.MODE': JSON.stringify(mode)
-    },
-    build: {
-      // Ensure environment variables are replaced correctly in production
-      rollupOptions: {
-        output: {
-          manualChunks: undefined, // Disable automatic chunk splitting for simpler debugging
-        }
-      }
     }
   };
 });
