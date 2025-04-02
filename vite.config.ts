@@ -5,8 +5,13 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "::",
-    port: 8080,
+    proxy: {
+      // For local development proxy
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
   },
   plugins: [
     react()
@@ -16,4 +21,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    // Explicitly pass the env var to client
+    'import.meta.env.VITE_NASA_API_KEY': JSON.stringify(process.env.VITE_NASA_API_KEY),
+    // For global access if needed
+    'process.env.VITE_NASA_API_KEY': JSON.stringify(process.env.VITE_NASA_API_KEY)
+  }
 }));

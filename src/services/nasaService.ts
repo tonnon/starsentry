@@ -1,9 +1,25 @@
 import axios from 'axios';
 
-// Debugging - remove in production
-console.log('NASA_API_KEY loaded:', !!import.meta.env.VITE_NASA_API_KEY);
+// Debug version - shows where the key is coming from
+const getNASAKey = () => {
+  // 1. First try Vite's client-side env vars
+  if (import.meta.env.VITE_NASA_API_KEY) {
+    console.log('Using VITE_NASA_API_KEY from import.meta.env');
+    return import.meta.env.VITE_NASA_API_KEY;
+  }
+  
+  // 2. Try process.env (for SSR or fallback)
+  if (process.env.VITE_NASA_API_KEY) {
+    console.log('Using VITE_NASA_API_KEY from process.env');
+    return process.env.VITE_NASA_API_KEY;
+  }
+  
+  // 3. Fallback to demo key
+  console.warn('Using DEMO_KEY - no API key found in environment');
+  return 'DEMO_KEY';
+};
 
-const NASA_API_KEY = import.meta.env.VITE_NASA_API_KEY || 'DEMO_KEY'; // Fallback to demo key
+const NASA_API_KEY = getNASAKey();
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 interface CacheEntry {
@@ -21,10 +37,10 @@ const nasaApi = axios.create({
   }
 });
 
-// Enhanced error handling
+// Enhanced error handling with retry logic
 nasaApi.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
     if (error.response) {
       console.error('NASA API Error:', {
         status: error.response.status,
@@ -34,6 +50,12 @@ nasaApi.interceptors.response.use(
       
       if (error.response.status === 403) {
         console.error('API Key might be invalid or rate limited');
+      }
+      
+      // Retry once for rate limits
+      if (error.response.status === 429) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return nasaApi.request(error.config);
       }
     }
     return Promise.reject(error);
@@ -68,18 +90,18 @@ async function fetchWithCache(endpoint: string, params = {}, cacheKey: string) {
     return response.data;
   } catch (error) {
     console.error(`Failed to fetch ${endpoint}:`, error);
-    return apiCache[cacheKey]?.data || null; // Return null to distinguish from empty data
+    return apiCache[cacheKey]?.data || null;
   }
 }
 
 export const fetchSpaceData = async () => {
   if (!NASA_API_KEY || NASA_API_KEY === 'DEMO_KEY') {
     console.warn('Using fallback data - no API key or using demo key');
-    return FALLBACK_DATA;
+    return { ...FALLBACK_DATA, message: 'Using fallback data - API key not available' };
   }
 
   try {
-    const [satellites, debris] = await Promise.all([
+    const [satellites, debris] = await Promise.allSettled([
       fetchWithCache('/DONKI/notifications', { 
         type: 'satellite',
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -88,20 +110,30 @@ export const fetchSpaceData = async () => {
       fetchWithCache('/neo/rest/v1/stats', {}, 'neo-stats')
     ]);
 
+    // Handle PromiseSettledResult
+    const satellitesData = satellites.status === 'fulfilled' ? satellites.value : null;
+    const debrisData = debris.status === 'fulfilled' ? debris.value : null;
+
     // If either request failed completely
-    if (satellites === null || debris === null) {
-      return FALLBACK_DATA;
+    if (satellitesData === null || debrisData === null) {
+      return { 
+        ...FALLBACK_DATA,
+        message: 'Partial data unavailable - using fallback values'
+      };
     }
 
     return {
-      activeSatellites: satellites?.length ?? FALLBACK_DATA.activeSatellites,
-      trackedDebris: debris?.near_earth_object_count ?? FALLBACK_DATA.trackedDebris,
+      activeSatellites: satellitesData?.length ?? FALLBACK_DATA.activeSatellites,
+      trackedDebris: debrisData?.near_earth_object_count ?? FALLBACK_DATA.trackedDebris,
       collisionAlerts: FALLBACK_DATA.collisionAlerts,
       orbitAdjustments: FALLBACK_DATA.orbitAdjustments,
       usingFallback: false
     };
   } catch (error) {
     console.error('Space data fetch failed:', error);
-    return FALLBACK_DATA;
+    return { 
+      ...FALLBACK_DATA,
+      message: 'Data fetch failed - using fallback values'
+    };
   }
 };
