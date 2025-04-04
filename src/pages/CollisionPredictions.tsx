@@ -4,14 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import AlertPanel from '../components/dashboard/AlertPanel';
-import { AlertTriangle, ChevronDown, Filter, Info, Orbit, Radar, ShieldAlert, Loader2, Move3D } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, ChevronDown, Filter, Info, Orbit, Radar, ShieldAlert, Loader2, Move3D, ArrowUp, ArrowDown } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { jsPDF } from 'jspdf';
-import { gsap } from 'gsap';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Mock data for collision predictions
@@ -124,6 +121,10 @@ const CollisionPredictions: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<'before' | 'after'>('before');
   const [maneuverCompleted, setManeuverCompleted] = useState<Record<string, boolean>>({});
   const [isButtonDisabled, setIsButtonDisabled] = useState(true);
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: 'ascending' | 'descending';
+  } | null>(null);
 
   // Scene objects refs for before and after scenes
   const beforeSceneRef = useRef<THREE.Scene | null>(null);
@@ -169,6 +170,72 @@ const CollisionPredictions: React.FC = () => {
       default: return null;
     }
   };
+
+    // Ordenate function
+    const requestSort = (key: string) => {
+      let direction: 'ascending' | 'descending' = 'ascending';
+      if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+        direction = 'descending';
+      }
+      setSortConfig({ key, direction });
+    };
+
+    const getSortedData = () => {
+      if (!sortConfig) return mockCollisionData;
+  
+      return [...mockCollisionData].sort((a, b) => {
+        if (sortConfig.key === 'objects') {
+          const objectAStr = `${a.objectA} ${a.objectB}`;
+          const objectBStr = `${b.objectA} ${b.objectB}`;
+          if (sortConfig.direction === 'ascending') {
+            return objectAStr.localeCompare(objectBStr);
+          } else {
+            return objectBStr.localeCompare(objectAStr);
+          }
+        }
+        
+        if (sortConfig.key === 'probability') {
+          return sortConfig.direction === 'ascending' 
+            ? a.probability - b.probability 
+            : b.probability - a.probability;
+        }
+        
+        if (sortConfig.key === 'timeToClosestApproach') {
+          const getMinutes = (timeStr: string) => {
+            const [h, m] = timeStr.split(/h\s*/);
+            return parseInt(h) * 60 + parseInt(m.replace('m', ''));
+          };
+          
+          return sortConfig.direction === 'ascending' 
+            ? getMinutes(a.timeToClosestApproach) - getMinutes(b.timeToClosestApproach)
+            : getMinutes(b.timeToClosestApproach) - getMinutes(a.timeToClosestApproach);
+        }
+        
+        if (sortConfig.key === 'distance') {
+          return sortConfig.direction === 'ascending' 
+            ? a.distance - b.distance 
+            : b.distance - a.distance;
+        }
+        
+        if (sortConfig.key === 'severity') {
+          const severityOrder = { high: 3, medium: 2, low: 1 };
+          return sortConfig.direction === 'ascending' 
+            ? severityOrder[a.severity] - severityOrder[b.severity]
+            : severityOrder[b.severity] - severityOrder[a.severity];
+        }
+        
+        return 0;
+      });
+    };
+
+    const getSortIcon = (key: string) => {
+      if (!sortConfig || sortConfig.key !== key) {
+        return <ArrowUp size={14} className="opacity-30" />;
+      }
+      return sortConfig.direction === 'ascending' 
+        ? <ArrowUp size={14} /> 
+        : <ArrowDown size={14} />;
+    };
 
   // Initialize Three.js scene for before/after visualization
   const initThreeJSScene = (
@@ -592,7 +659,7 @@ const CollisionPredictions: React.FC = () => {
           initThreeJSScene(prediction!, beforeCanvasRef, false);
         }, 100);
       }
-      
+
       setIsAnalyzing(false);
       setIsButtonDisabled(false);
     }, 1500);
@@ -715,27 +782,61 @@ const CollisionPredictions: React.FC = () => {
               <Card className="neo-border border-white/10 bg-space-dark overflow-hidden">
                 <div className="p-4 border-b border-white/10 flex justify-between items-center">
                   <h2 className="font-semibold">Active Collision Predictions</h2>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="h-8 gap-1 text-xs">
-                      <Filter size={14} />
-                      Filter
-                    </Button>
-                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-white/10 hover:bg-space-light/50">
-                        <TableHead className="text-white/70">Objects</TableHead>
-                        <TableHead className="text-white/70 text-right">Probability</TableHead>
-                        <TableHead className="text-white/70 text-right">Time to TCA</TableHead>
-                        <TableHead className="text-white/70 text-right">Miss Distance</TableHead>
-                        <TableHead className="text-white/70 text-right">Severity</TableHead>
+                      <TableHead 
+                          className="text-white/70 cursor-pointer hover:text-white"
+                          onClick={() => requestSort('objects')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Objects
+                            {getSortIcon('objects')}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="text-white/70 text-right cursor-pointer hover:text-white"
+                          onClick={() => requestSort('probability')}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Probability
+                            {getSortIcon('probability')}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="text-white/70 text-right cursor-pointer hover:text-white"
+                          onClick={() => requestSort('timeToClosestApproach')}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Time to TCA
+                            {getSortIcon('timeToClosestApproach')}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="text-white/70 text-right cursor-pointer hover:text-white"
+                          onClick={() => requestSort('distance')}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Miss Distance
+                            {getSortIcon('distance')}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="text-white/70 text-right cursor-pointer hover:text-white"
+                          onClick={() => requestSort('severity')}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Severity
+                            {getSortIcon('severity')}
+                          </div>
+                        </TableHead>
                         <TableHead className="text-white/70 w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockCollisionData.map((prediction) => (
+                      {getSortedData().map((prediction) => (
                         <React.Fragment key={prediction.id}>
                           <TableRow 
                             className={`border-white/10 cursor-pointer ${
