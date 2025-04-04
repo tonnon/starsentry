@@ -123,6 +123,7 @@ const CollisionPredictions: React.FC = () => {
   const [showMitigationDialog, setShowMitigationDialog] = useState(false);
   const [currentTab, setCurrentTab] = useState<'before' | 'after'>('before');
   const [maneuverCompleted, setManeuverCompleted] = useState<Record<string, boolean>>({});
+  const [isButtonDisabled, setIsButtonDisabled] = useState(true);
 
   // Scene objects refs for before and after scenes
   const beforeSceneRef = useRef<THREE.Scene | null>(null);
@@ -531,6 +532,7 @@ const CollisionPredictions: React.FC = () => {
   // Analyze trajectory function
   const analyzeTrajectory = (predictionId: string) => {
     setIsAnalyzing(true);
+    setIsButtonDisabled(true);
     
     setTimeout(() => {
       const prediction = mockCollisionData.find(p => p.id === predictionId);
@@ -560,6 +562,7 @@ const CollisionPredictions: React.FC = () => {
       
       setAnalysisResult(result);
       setIsAnalyzing(false);
+      setIsButtonDisabled(false);
     }, 1500);
   };
 
@@ -896,6 +899,7 @@ const CollisionPredictions: React.FC = () => {
                                     size="sm" 
                                     className="h-8 text-xs"
                                     onClick={handleMitigateClick}
+                                    disabled={isButtonDisabled || isAnalyzing}
                                   >
                                     <ShieldAlert className="h-4 w-4 mr-1" />
                                     Mitigate Risk
