@@ -181,32 +181,11 @@ const CollisionPredictions: React.FC = () => {
     const container = canvasRef.current.parentElement;
     if (!container) return;
 
-    // If scene already exists, just update positions
-    const sceneRef = isAfterScene ? afterSceneRef : beforeSceneRef;
-    if (sceneRef.current) {
-      const satelliteRef = isAfterScene ? afterSatelliteRef : beforeSatelliteRef;
-      const debrisRef = isAfterScene ? afterDebrisRef : beforeDebrisRef;
-      
-      if (satelliteRef.current && debrisRef.current) {
-        const distanceScale = Math.min(prediction.distance / 300, 3);
-        
-        if (isAfterScene && maneuverCompleted[prediction.id]) {
-          satelliteRef.current.position.set(-2, 1.5, 0);
-          debrisRef.current.position.set(distanceScale, 0.5, 0);
-        } else {
-          satelliteRef.current.position.set(-distanceScale, 0, 0);
-          debrisRef.current.position.set(distanceScale, 0.5, 0);
-        }
-      }
-      return;
-    }
-
     // Clean up previous scene if it exists
     const cleanupScene = () => {
-      const sceneRef = isAfterScene ? afterSceneRef : beforeSceneRef;
-      const rendererRef = isAfterScene ? afterRendererRef : beforeRendererRef;
       const animationRef = isAfterScene ? afterAnimationRef : beforeAnimationRef;
       const controlsRef = isAfterScene ? afterControlsRef : beforeControlsRef;
+      const rendererRef = isAfterScene ? afterRendererRef : beforeRendererRef;
 
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
@@ -223,14 +202,23 @@ const CollisionPredictions: React.FC = () => {
         }
         rendererRef.current = null;
       }
-      sceneRef.current = null;
+      if (isAfterScene) {
+        afterSceneRef.current = null;
+      } else {
+        beforeSceneRef.current = null;
+      }
     };
 
     cleanupScene();
 
+    if (container.clientWidth === 0 || container.clientHeight === 0) {
+      setTimeout(() => initThreeJSScene(prediction, canvasRef, isAfterScene), 100);
+      return;
+    } 
+
     // Scene setup
     const width = container.clientWidth;
-    const height = 400;
+    const height = container.clientHeight || 400;
 
     // Create scene with space background
     const scene = new THREE.Scene();
@@ -252,7 +240,11 @@ const CollisionPredictions: React.FC = () => {
     }
 
     // Create renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      powerPreference: "high-performance",
+      alpha: true
+    }); 
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     if (isAfterScene) {
@@ -260,9 +252,8 @@ const CollisionPredictions: React.FC = () => {
     } else {
       beforeRendererRef.current = renderer;
     }
+    canvasRef.current.innerHTML = ''; // Clear any existing canvas
     canvasRef.current.appendChild(renderer.domElement);
-
-    
 
     // Add orbit controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -335,23 +326,22 @@ const CollisionPredictions: React.FC = () => {
     const distanceScale = Math.min(prediction.distance / 300, 3);
     
     if (isAfterScene && maneuverCompleted[prediction.id]) {
-      // After maneuver positions - make the satellite clearly avoid the collision
-      satellite.position.set(-2, 1.5, 0); // Move satellite up and to the side
-      debris.position.set(distanceScale, 0.5, 0); // Debris continues on original path
+      satellite.position.set(-2, 1.5, 0);
+      debris.position.set(distanceScale, 0.5, 0);
       
       // Add visual indicator of successful avoidance
       const successIndicator = new THREE.Mesh(
         new THREE.SphereGeometry(0.15, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 })
       );
-      successIndicator.position.set(0, 0.75, 0); // Midpoint of new path
+      successIndicator.position.set(0, 0.75, 0);
       scene.add(successIndicator);
 
       // Add success path indicator
       const successPathGeometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-2, 1.5, 0), // New satellite position
-        new THREE.Vector3(0, 0.75, 0),  // Midpoint
-        new THREE.Vector3(distanceScale, 0.5, 0)      // Debris position
+        new THREE.Vector3(-2, 1.5, 0),
+        new THREE.Vector3(0, 0.75, 0),
+        new THREE.Vector3(distanceScale, 0.5, 0)
       ]);
       
       const successPathMaterial = new THREE.LineBasicMaterial({
@@ -362,11 +352,9 @@ const CollisionPredictions: React.FC = () => {
       const successPath = new THREE.Line(successPathGeometry, successPathMaterial);
       scene.add(successPath);
     } else {
-      // Original positions heading toward collision
       satellite.position.set(-distanceScale, 0, 0);
       debris.position.set(distanceScale, 0.5, 0);
       
-      // Add danger zone only in before scene for high risk
       if (!isAfterScene && prediction.severity === 'high') {
         const dangerZoneGeometry = new THREE.SphereGeometry(0.5, 32, 32);
         const dangerZoneMaterial = new THREE.MeshBasicMaterial({
@@ -409,7 +397,7 @@ const CollisionPredictions: React.FC = () => {
     );
     debrisTrajectory.computeLineDistances();
 
-    // Add collision point marker (only for high risk in before scene)
+    // Add collision point marker
     const collisionPointGeometry = new THREE.SphereGeometry(0.1, 16, 16);
     const collisionPointMaterial = new THREE.MeshBasicMaterial({
       color: 0xff0000,
@@ -441,18 +429,15 @@ const CollisionPredictions: React.FC = () => {
       const animationRef = isAfterScene ? afterAnimationRef : beforeAnimationRef;
       animationRef.current = requestAnimationFrame(animate);
       
-      // Rotate objects
       satellite.rotation.y += 0.005;
       debris.rotation.x += 0.01;
       debris.rotation.y += 0.007;
       
-      // Move objects toward collision point only in before scene if maneuver not completed
       if (!isAfterScene && !maneuverCompleted[prediction.id] && satellite.position.distanceTo(debris.position) > 0.5) {
         satellite.position.lerp(new THREE.Vector3(0, 0, 0), 0.0005);
         debris.position.lerp(new THREE.Vector3(0, 0, 0), 0.0005);
       }
       
-      // Pulse effect for collision point
       if (collisionPoint.visible) {
         let pulseDirection = 0.01;
         collisionPoint.scale.x += pulseDirection * 0.05;
@@ -470,10 +455,9 @@ const CollisionPredictions: React.FC = () => {
     animate();
   };
 
-  // Clean up Three.js resources
+  // Clean up Three.js resources when component unmounts
   useEffect(() => {
     return () => {
-      // Clean up before scene
       if (beforeAnimationRef.current) cancelAnimationFrame(beforeAnimationRef.current);
       if (beforeControlsRef.current) beforeControlsRef.current.dispose();
       if (beforeRendererRef.current) {
@@ -483,7 +467,6 @@ const CollisionPredictions: React.FC = () => {
         }
       }
 
-      // Clean up after scene
       if (afterAnimationRef.current) cancelAnimationFrame(afterAnimationRef.current);
       if (afterControlsRef.current) afterControlsRef.current.dispose();
       if (afterRendererRef.current) {
@@ -495,38 +478,80 @@ const CollisionPredictions: React.FC = () => {
     };
   }, []);
 
-  // Initialize scenes when prediction is selected or maneuver completed
+  // Initialize or update scenes when prediction is selected or maneuver completed
   useEffect(() => {
-    if (analysisResult && selectedPrediction) {
+    if (selectedPrediction) {
       const prediction = mockCollisionData.find(p => p.id === selectedPrediction);
       if (prediction) {
-        // Initialize before scene only once
-        if (!beforeSceneRef.current) {
-          setTimeout(() => {
-            initThreeJSScene(prediction, beforeCanvasRef, false);
-          }, 0);
-        }
-  
-        // Initialize after scene only if there's successful mitigation history
-        const hasSuccessfulMitigation = mitigationHistory.some(
-          m => m.predictionId === selectedPrediction && m.success
-        );
-        
-        if (hasSuccessfulMitigation && !afterSceneRef.current) {
-          setTimeout(() => {
+        // Pequeno delay para garantir que o DOM esteja pronto
+        setTimeout(() => {
+          initThreeJSScene(prediction, beforeCanvasRef, false);
+          
+          if (mitigationHistory.some(m => m.predictionId === selectedPrediction && m.success)) {
             initThreeJSScene(prediction, afterCanvasRef, true);
-          }, 0);
-        }
+          }
+        }, 50);
       }
     }
-  }, [analysisResult, selectedPrediction, maneuverCompleted, mitigationHistory]);
+  }, [selectedPrediction, maneuverCompleted, mitigationHistory]);
+
+  // Handle canvas resize
+  useEffect(() => {
+    const handleResize = () => {
+      const resizeScene = (
+        renderer: THREE.WebGLRenderer | null, 
+        camera: THREE.PerspectiveCamera | null,
+        container: HTMLElement | null
+      ) => {
+        if (!renderer || !camera || !container) return;
+        
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      };
+  
+      if (beforeCanvasRef.current?.parentElement) {
+        resizeScene(
+          beforeRendererRef.current,
+          beforeCameraRef.current,
+          beforeCanvasRef.current.parentElement
+        );
+      }
+  
+      if (afterCanvasRef.current?.parentElement) {
+        resizeScene(
+          afterRendererRef.current,
+          afterCameraRef.current,
+          afterCanvasRef.current.parentElement
+        );
+      }
+    };
+  
+    const resizeObserver = new ResizeObserver(handleResize);
+  
+    if (beforeCanvasRef.current?.parentElement) {
+      resizeObserver.observe(beforeCanvasRef.current.parentElement);
+    }
+    
+    if (afterCanvasRef.current?.parentElement) {
+      resizeObserver.observe(afterCanvasRef.current.parentElement);
+    }
+  
+    window.addEventListener('resize', handleResize);
+  
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   // Handle row click
   const handleRowClick = (id: string) => {
     setSelectedPrediction(id === selectedPrediction ? null : id);
-    if (id !== selectedPrediction) {
-      setAnalysisResult(null);
-    }
   };
 
   // Analyze trajectory function
@@ -561,121 +586,16 @@ const CollisionPredictions: React.FC = () => {
       };
       
       setAnalysisResult(result);
+
+      if (selectedPrediction === predictionId) {
+        setTimeout(() => {
+          initThreeJSScene(prediction!, beforeCanvasRef, false);
+        }, 100);
+      }
+      
       setIsAnalyzing(false);
       setIsButtonDisabled(false);
     }, 1500);
-  };
-
-  const generatePDF = async () => {
-    setIsGeneratingPDF(true);
-    
-    try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      
-      // Title and metadata
-      pdf.setFontSize(20);
-      pdf.setTextColor(40, 53, 147);
-      pdf.text('Collision Analysis Report', 105, 20, { align: 'center' });
-      
-      pdf.setFontSize(12);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(`Generated on: ${new Date().toLocaleString()}`, 105, 30, { align: 'center' });
-
-      // Capture Three.js canvas (using before scene for PDF)
-      if (beforeCanvasRef.current && beforeRendererRef.current) {
-        // Pause animation for stable capture
-        if (beforeAnimationRef.current) {
-          cancelAnimationFrame(beforeAnimationRef.current);
-        }
-
-        // Force final render
-        beforeRendererRef.current.render(beforeSceneRef.current!, beforeCameraRef.current!);
-
-        // Create temporary canvas for capture
-        const canvas3D = beforeRendererRef.current.domElement;
-        const canvas2D = document.createElement('canvas');
-        canvas2D.width = canvas3D.width;
-        canvas2D.height = canvas3D.height;
-        
-        const ctx = canvas2D.getContext('2d');
-        if (ctx) {
-          // Fill background
-          ctx.fillStyle = '#020817';
-          ctx.fillRect(0, 0, canvas2D.width, canvas2D.height);
-          
-          // Copy WebGL content
-          ctx.drawImage(canvas3D, 0, 0);
-          
-          // Add to PDF
-          const imgData = canvas2D.toDataURL('image/png');
-          const imgWidth = 180; // mm
-          const imgHeight = (canvas2D.height * imgWidth) / canvas2D.width;
-          
-          pdf.addImage(imgData, 'PNG', 15, 45, imgWidth, imgHeight);
-        }
-
-        // Restart animation
-        if (beforeSceneRef.current && beforeCameraRef.current && beforeRendererRef.current) {
-          const animate = () => {
-            beforeAnimationRef.current = requestAnimationFrame(animate);
-            beforeRendererRef.current!.render(beforeSceneRef.current!, beforeCameraRef.current!);
-          };
-          animate();
-        }
-      }
-
-      // Collision details
-      pdf.setFontSize(14);
-      pdf.setTextColor(40, 53, 147);
-      pdf.text('Collision Details', 15, pdf.internal.pageSize.getHeight() - 80);
-      
-      pdf.setFontSize(12);
-      pdf.setTextColor(0, 0, 0);
-      if (analysisResult) {
-        pdf.text(`Objects: ${analysisResult.objects.join(' and ')}`, 15, pdf.internal.pageSize.getHeight() - 70);
-        pdf.text(`Probability: ${analysisResult.riskAssessment.currentRisk}`, 15, pdf.internal.pageSize.getHeight() - 60);
-        pdf.text(`Time to Closest Approach: ${analysisResult.trajectoryData.closestApproach}`, 15, pdf.internal.pageSize.getHeight() - 50);
-        pdf.text(`Miss Distance: ${analysisResult.trajectoryData.missDistance} m`, 15, pdf.internal.pageSize.getHeight() - 40);
-      }
-
-      // Risk assessment
-      pdf.addPage();
-      pdf.setFontSize(14);
-      pdf.setTextColor(40, 53, 147);
-      pdf.text('Risk Assessment', 15, 20);
-      
-      pdf.setFontSize(12);
-      pdf.setTextColor(0, 0, 0);
-      if (analysisResult) {
-        pdf.text(`Current Probability: ${analysisResult.riskAssessment.currentRisk}`, 15, 30);
-        pdf.text(`Projected Probability: ${analysisResult.riskAssessment.projectedRisk}`, 15, 40);
-        pdf.text(`Confidence Level: ${analysisResult.riskAssessment.confidenceLevel}`, 15, 50);
-      }
-
-      // Recommendations
-      pdf.setFontSize(14);
-      pdf.setTextColor(40, 53, 147);
-      pdf.text('Recommendations', 15, 70);
-      
-      pdf.setFontSize(12);
-      if (analysisResult) {
-        analysisResult.recommendations.forEach((rec: string, index: number) => {
-          pdf.text(`• ${rec}`, 15, 80 + (index * 10));
-        });
-      }
-
-      // Footer
-      pdf.setFontSize(10);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('Generated by Space Collision Monitoring System', 105, pdf.internal.pageSize.getHeight() - 10, { align: 'center' });
-
-      // Save PDF
-      pdf.save(`collision-report-${analysisResult?.predictionId || 'unknown'}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-    } finally {
-      setIsGeneratingPDF(false);
-    }
   };
 
   const simulateOrbitalManeuver = (predictionId: string) => {
@@ -705,18 +625,6 @@ const CollisionPredictions: React.FC = () => {
         
         // Force recreation of after scene with new positions
         if (afterCanvasRef.current && prediction) {
-          // Clean up existing after scene
-          if (afterAnimationRef.current) cancelAnimationFrame(afterAnimationRef.current);
-          if (afterControlsRef.current) afterControlsRef.current.dispose();
-          if (afterRendererRef.current) {
-            afterRendererRef.current.dispose();
-            if (afterCanvasRef.current.contains(afterRendererRef.current.domElement)) {
-              afterCanvasRef.current.removeChild(afterRendererRef.current.domElement);
-            }
-          }
-          afterSceneRef.current = null;
-          
-          // Create new after scene with maneuvered positions
           initThreeJSScene(prediction, afterCanvasRef, true);
         }
       } else {
@@ -906,17 +814,14 @@ const CollisionPredictions: React.FC = () => {
                                   </Button>
                                 </div>
 
-                                {/* Analysis Results Section */}
                                 {analysisResult && analysisResult.predictionId === prediction.id && (
                                   <div className="mt-6 border-t border-white/10 pt-4">
                                     <div className="space-y-4">
-                                      {/* Enhanced 3D Visualization with Tabs */}
                                       <Tabs>
                                         <TabsContent value="before" forceMount>
-                                          <div className="relative h-96 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            <div ref={beforeCanvasRef} className="absolute inset-0 w-full" />
+                                          <div className="canvas-container relative" style={{ height: '400px' }}>
+                                            <div ref={beforeCanvasRef} className="absolute inset-0 w-full h-full" />
                                             
-                                            {/* Improved Legend */}
                                             <div className="absolute bottom-4 left-4 z-10 bg-space-dark/90 p-3 rounded-lg text-xs space-y-2 backdrop-blur-sm">
                                               <div className="flex items-center gap-2">
                                                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -944,12 +849,11 @@ const CollisionPredictions: React.FC = () => {
                                             </div>
                                           </div>
                                         </TabsContent>
-                                        {maneuverCompleted[selectedPrediction] ?                                         
+                                        {maneuverCompleted[selectedPrediction] && (
                                           <TabsContent value="after" forceMount>
-                                            <div className="relative h-96 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                                              <div ref={afterCanvasRef} className="absolute inset-0" />
+                                            <div className="canvas-container relative" style={{ height: '400px' }}>
+                                              <div ref={afterCanvasRef} className="absolute inset-0 w-full h-full" />
                                               
-                                              {/* Improved Legend */}
                                               <div className="absolute bottom-4 left-4 z-10 bg-space-dark/90 p-3 rounded-lg text-xs space-y-2 backdrop-blur-sm">
                                                 <div className="flex items-center gap-2">
                                                   <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -974,118 +878,9 @@ const CollisionPredictions: React.FC = () => {
                                                 </div>
                                               </div>
                                             </div>
-                                          </TabsContent> : null}
-                                      </Tabs>
-
-                                      {/* Mitigation History */}
-                                      <div className="border-t border-white/10 pt-4">
-                                        <h4 className="text-neon-blue text-sm mb-2">Mitigation History</h4>
-                                        {mitigationHistory.filter(m => m.predictionId === analysisResult?.predictionId).length > 0 ? (
-                                          <div className="space-y-2 max-h-40 overflow-y-auto">
-                                            {mitigationHistory
-                                              .filter(m => m.predictionId === analysisResult?.predictionId)
-                                              .map((item) => (
-                                                <div key={item.id} className="flex items-center justify-between p-2 bg-space rounded">
-                                                  <div className="flex items-center gap-2">
-                                                    {item.success ? (
-                                                      <ShieldAlert size={14} className="text-status-success" />
-                                                    ) : (
-                                                      <AlertTriangle size={14} className="text-status-danger" />
-                                                    )}
-                                                    <span className="text-sm">{item.action}</span>
-                                                  </div>
-                                                  <span className="text-xs text-white/60">
-                                                    {new Date(item.timestamp).toLocaleTimeString()}
-                                                  </span>
-                                                </div>
-                                              ))}
-                                          </div>
-                                        ) : (
-                                          <p className="text-sm text-white/70">No mitigation actions recorded</p>
+                                          </TabsContent>
                                         )}
-                                      </div>
-
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <h4 className="text-neon-blue text-sm mb-2">Objects Analyzed</h4>
-                                          <div className="flex flex-wrap gap-2">
-                                            {analysisResult.objects.map((obj: string, index: number) => (
-                                              <Badge key={index} variant="outline" className="text-xs">
-                                                {obj}
-                                              </Badge>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        <div>
-                                          <h4 className="text-neon-blue text-sm mb-2">Analysis Time</h4>
-                                          <div className="text-sm">{analysisResult.analysisTime}</div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="border-t border-white/10 pt-4">
-                                        <h4 className="text-neon-blue text-sm mb-2">Trajectory Data</h4>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                          <div>
-                                            <div className="text-xs text-white/70">Closest Approach</div>
-                                            <div className="text-sm">{analysisResult.trajectoryData.closestApproach}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs text-white/70">Miss Distance</div>
-                                            <div className="text-sm">{analysisResult.trajectoryData.missDistance} m</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs text-white/70">Relative Velocity</div>
-                                            <div className="text-sm">{analysisResult.trajectoryData.relativeVelocity}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs text-white/70">Approach Angle</div>
-                                            <div className="text-sm">{analysisResult.trajectoryData.approachAngle}</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="border-t border-white/10 pt-4">
-                                        <h4 className="text-neon-blue text-sm mb-2">Risk Assessment</h4>
-                                        <div className="grid grid-cols-3 gap-4">
-                                          <div>
-                                            <div className="text-xs text-white/70">Current Probability</div>
-                                            <div className="text-sm">{analysisResult.riskAssessment.currentRisk}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs text-white/70">Projected Probability</div>
-                                            <div className="text-sm">
-                                              {analysisResult.riskAssessment.projectedRisk}
-                                              {parseFloat(analysisResult.riskAssessment.projectedRisk) > parseFloat(analysisResult.riskAssessment.currentRisk) ? (
-                                                <span className="text-status-danger ml-1">↑</span>
-                                              ) : (
-                                                <span className="text-status-success ml-1">↓</span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs text-white/70">Confidence Level</div>
-                                            <div className="text-sm">{analysisResult.riskAssessment.confidenceLevel}</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="border-t border-white/10 pt-4">
-                                        <h4 className="text-neon-blue text-sm mb-2">Recommendations</h4>
-                                        <ul className="list-disc list-inside space-y-1 text-sm">
-                                          {analysisResult.recommendations.map((rec: string, index: number) => (
-                                            <li key={index}>{rec}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                      
-                                      <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
-                                        <Button 
-                                          size="sm" 
-                                          onClick={generatePDF}
-                                        >
-                                          {isGeneratingPDF ? 'Generating PDF...' : 'View Detailed Report'}
-                                        </Button>
-                                      </div>
+                                      </Tabs>
                                     </div>
                                   </div>
                                 )}
@@ -1147,7 +942,6 @@ const CollisionPredictions: React.FC = () => {
             </Button>
           </div>
           
-          {/* Cost Estimation Section */}
           <div className="mt-4 p-3 bg-space rounded-lg">
             <h4 className="text-sm font-medium mb-2">Maneuver Cost Estimation</h4>
             <div className="grid grid-cols-3 gap-4 text-xs">
