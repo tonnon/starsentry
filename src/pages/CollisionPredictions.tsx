@@ -108,8 +108,8 @@ const CollisionPredictions: React.FC = () => {
   const [selectedPrediction, setSelectedPrediction] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [threeJSInitialized, setThreeJSInitialized] = useState(false);
+  const beforeCanvasRef = useRef<HTMLDivElement>(null);
+  const afterCanvasRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isManeuvering, setIsManeuvering] = useState(false);
   const [mitigationHistory, setMitigationHistory] = useState<Array<{
@@ -124,15 +124,24 @@ const CollisionPredictions: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<'before' | 'after'>('before');
   const [maneuverCompleted, setManeuverCompleted] = useState<Record<string, boolean>>({});
 
-  // Scene objects refs
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const animationRef = useRef<number | null>(null);
-  const satelliteRef = useRef<THREE.Mesh | null>(null);
-  const debrisRef = useRef<THREE.Mesh | null>(null);
-  const collisionPointRef = useRef<THREE.Mesh | null>(null);
+  // Scene objects refs for before and after scenes
+  const beforeSceneRef = useRef<THREE.Scene | null>(null);
+  const beforeRendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const beforeCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const beforeControlsRef = useRef<OrbitControls | null>(null);
+  const beforeAnimationRef = useRef<number | null>(null);
+  const beforeSatelliteRef = useRef<THREE.Mesh | null>(null);
+  const beforeDebrisRef = useRef<THREE.Mesh | null>(null);
+  const beforeCollisionPointRef = useRef<THREE.Mesh | null>(null);
+
+  const afterSceneRef = useRef<THREE.Scene | null>(null);
+  const afterRendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const afterCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const afterControlsRef = useRef<OrbitControls | null>(null);
+  const afterAnimationRef = useRef<number | null>(null);
+  const afterSatelliteRef = useRef<THREE.Mesh | null>(null);
+  const afterDebrisRef = useRef<THREE.Mesh | null>(null);
+  const afterCollisionPointRef = useRef<THREE.Mesh | null>(null);
 
   // Statistics calculations
   const highRiskCount = mockCollisionData.filter(item => item.severity === 'high').length;
@@ -160,12 +169,44 @@ const CollisionPredictions: React.FC = () => {
     }
   };
 
-  // Initialize Three.js scene with enhanced visualization
-  const initThreeJSScene = (prediction: typeof mockCollisionData[0], forceReinit = false) => {
+  // Initialize Three.js scene for before/after visualization
+  const initThreeJSScene = (
+    prediction: typeof mockCollisionData[0],
+    canvasRef: React.RefObject<HTMLDivElement>,
+    isAfterScene: boolean
+  ) => {
     if (!canvasRef.current) return;
+
+    const container = canvasRef.current.parentElement;
+    if (!container) return;
+
+    // If scene already exists, just update positions
+    const sceneRef = isAfterScene ? afterSceneRef : beforeSceneRef;
+    if (sceneRef.current) {
+      const satelliteRef = isAfterScene ? afterSatelliteRef : beforeSatelliteRef;
+      const debrisRef = isAfterScene ? afterDebrisRef : beforeDebrisRef;
+      
+      if (satelliteRef.current && debrisRef.current) {
+        const distanceScale = Math.min(prediction.distance / 300, 3);
+        
+        if (isAfterScene && maneuverCompleted[prediction.id]) {
+          satelliteRef.current.position.set(-2, 1.5, 0);
+          debrisRef.current.position.set(distanceScale, 0.5, 0);
+        } else {
+          satelliteRef.current.position.set(-distanceScale, 0, 0);
+          debrisRef.current.position.set(distanceScale, 0.5, 0);
+        }
+      }
+      return;
+    }
 
     // Clean up previous scene if it exists
     const cleanupScene = () => {
+      const sceneRef = isAfterScene ? afterSceneRef : beforeSceneRef;
+      const rendererRef = isAfterScene ? afterRendererRef : beforeRendererRef;
+      const animationRef = isAfterScene ? afterAnimationRef : beforeAnimationRef;
+      const controlsRef = isAfterScene ? afterControlsRef : beforeControlsRef;
+
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -184,37 +225,45 @@ const CollisionPredictions: React.FC = () => {
       sceneRef.current = null;
     };
 
-    // Only clean up if forcing reinitialization or if scene exists
-    if (forceReinit || sceneRef.current) {
-      cleanupScene();
-    }
-
-    // If we're not forcing reinit and scene exists, just return
-    if (sceneRef.current && !forceReinit) return;
+    cleanupScene();
 
     // Scene setup
-    const width = canvasRef.current.clientWidth;
+    const width = container.clientWidth;
     const height = 400;
 
-    // 1. Create scene with space background
+    // Create scene with space background
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020817);
-    sceneRef.current = scene;
+    if (isAfterScene) {
+      afterSceneRef.current = scene;
+    } else {
+      beforeSceneRef.current = scene;
+    }
 
-    // 2. Create camera with better initial position
+    // Create camera
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     camera.position.set(2, 2, 5);
     camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
+    if (isAfterScene) {
+      afterCameraRef.current = camera;
+    } else {
+      beforeCameraRef.current = camera;
+    }
 
-    // 3. Create renderer with antialiasing
+    // Create renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
-    rendererRef.current = renderer;
+    if (isAfterScene) {
+      afterRendererRef.current = renderer;
+    } else {
+      beforeRendererRef.current = renderer;
+    }
     canvasRef.current.appendChild(renderer.domElement);
 
-    // 4. Add orbit controls with damping
+    
+
+    // Add orbit controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -222,9 +271,13 @@ const CollisionPredictions: React.FC = () => {
     controls.maxPolarAngle = Math.PI;
     controls.minDistance = 2;
     controls.maxDistance = 20;
-    controlsRef.current = controls;
+    if (isAfterScene) {
+      afterControlsRef.current = controls;
+    } else {
+      beforeControlsRef.current = controls;
+    }
 
-    // 5. Enhanced lighting
+    // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
     
@@ -236,7 +289,7 @@ const CollisionPredictions: React.FC = () => {
     directionalLight2.position.set(-1, -1, -1);
     scene.add(directionalLight2);
 
-    // 6. Create satellite with more details
+    // Create satellite
     const satelliteGeometry = new THREE.SphereGeometry(0.3, 32, 32);
     const satelliteMaterial = new THREE.MeshPhongMaterial({ 
       color: 0x3b82f6,
@@ -246,9 +299,13 @@ const CollisionPredictions: React.FC = () => {
       shininess: 50
     });
     const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
-    satelliteRef.current = satellite;
+    if (isAfterScene) {
+      afterSatelliteRef.current = satellite;
+    } else {
+      beforeSatelliteRef.current = satellite;
+    }
     
-    // Add solar panels to satellite
+    // Add solar panels
     const panelGeometry = new THREE.BoxGeometry(0.6, 0.02, 0.3);
     const panelMaterial = new THREE.MeshPhongMaterial({ color: 0x94a3b8 });
     const leftPanel = new THREE.Mesh(panelGeometry, panelMaterial);
@@ -258,7 +315,7 @@ const CollisionPredictions: React.FC = () => {
     rightPanel.position.set(0.5, 0, 0);
     satellite.add(rightPanel);
 
-    // 7. Create debris with irregular shape
+    // Create debris
     const debrisGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.2);
     const debrisMaterial = new THREE.MeshPhongMaterial({ 
       color: 0xef4444,
@@ -267,28 +324,63 @@ const CollisionPredictions: React.FC = () => {
       wireframe: false
     });
     const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
-    debrisRef.current = debris;
+    if (isAfterScene) {
+      afterDebrisRef.current = debris;
+    } else {
+      beforeDebrisRef.current = debris;
+    }
 
-    // 8. Position objects based on prediction data and maneuver state
+    // Position objects
     const distanceScale = Math.min(prediction.distance / 300, 3);
     
-    if (maneuverCompleted[prediction.id]) {
-      // Posição após o maneuver
-      satellite.position.set(-2, 1.5, 0);
-      debris.position.set(distanceScale, 0.5, 0);
-      if (collisionPointRef.current) {
-        collisionPointRef.current.visible = false;
-      }
+    if (isAfterScene && maneuverCompleted[prediction.id]) {
+      // After maneuver positions - make the satellite clearly avoid the collision
+      satellite.position.set(-2, 1.5, 0); // Move satellite up and to the side
+      debris.position.set(distanceScale, 0.5, 0); // Debris continues on original path
+      
+      // Add visual indicator of successful avoidance
+      const successIndicator = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 })
+      );
+      successIndicator.position.set(0, 0.75, 0); // Midpoint of new path
+      scene.add(successIndicator);
+
+      // Add success path indicator
+      const successPathGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-2, 1.5, 0), // New satellite position
+        new THREE.Vector3(0, 0.75, 0),  // Midpoint
+        new THREE.Vector3(distanceScale, 0.5, 0)      // Debris position
+      ]);
+      
+      const successPathMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ff00,
+        linewidth: 2
+      });
+      
+      const successPath = new THREE.Line(successPathGeometry, successPathMaterial);
+      scene.add(successPath);
     } else {
-      // Posição original
+      // Original positions heading toward collision
       satellite.position.set(-distanceScale, 0, 0);
       debris.position.set(distanceScale, 0.5, 0);
-      if (collisionPointRef.current) {
-        collisionPointRef.current.visible = prediction.severity === 'high';
+      
+      // Add danger zone only in before scene for high risk
+      if (!isAfterScene && prediction.severity === 'high') {
+        const dangerZoneGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const dangerZoneMaterial = new THREE.MeshBasicMaterial({
+          color: 0xff0000,
+          transparent: true,
+          opacity: 0.2,
+          wireframe: true
+        });
+        const dangerZone = new THREE.Mesh(dangerZoneGeometry, dangerZoneMaterial);
+        dangerZone.position.set(0, 0, 0);
+        scene.add(dangerZone);
       }
     }
 
-    // 9. Add trajectory paths (dashed lines)
+    // Add trajectory paths
     const trajectoryMaterial = new THREE.LineDashedMaterial({
       color: 0x10b981,
       dashSize: 0.2,
@@ -316,7 +408,7 @@ const CollisionPredictions: React.FC = () => {
     );
     debrisTrajectory.computeLineDistances();
 
-    // 10. Add collision point marker (only for high risk)
+    // Add collision point marker (only for high risk in before scene)
     const collisionPointGeometry = new THREE.SphereGeometry(0.1, 16, 16);
     const collisionPointMaterial = new THREE.MeshBasicMaterial({
       color: 0xff0000,
@@ -325,24 +417,14 @@ const CollisionPredictions: React.FC = () => {
     });
     const collisionPoint = new THREE.Mesh(collisionPointGeometry, collisionPointMaterial);
     collisionPoint.position.set(0, 0, 0);
-    collisionPoint.visible = prediction.severity === 'high' && !maneuverCompleted[prediction.id];
-    collisionPointRef.current = collisionPoint;
-
-    // 11. Add danger zone (red sphere that pulses for high risk)
-    if (prediction.severity === 'high' && !maneuverCompleted[prediction.id]) {
-      const dangerZoneGeometry = new THREE.SphereGeometry(0.5, 32, 32);
-      const dangerZoneMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff0000,
-        transparent: true,
-        opacity: 0.2,
-        wireframe: true
-      });
-      const dangerZone = new THREE.Mesh(dangerZoneGeometry, dangerZoneMaterial);
-      dangerZone.position.set(0, 0, 0);
-      scene.add(dangerZone);
+    collisionPoint.visible = !isAfterScene && prediction.severity === 'high';
+    if (isAfterScene) {
+      afterCollisionPointRef.current = collisionPoint;
+    } else {
+      beforeCollisionPointRef.current = collisionPoint;
     }
 
-    // 12. Add coordinate axes with labels
+    // Add coordinate axes
     const axesHelper = new THREE.AxesHelper(2);
     scene.add(axesHelper);
 
@@ -353,9 +435,9 @@ const CollisionPredictions: React.FC = () => {
     scene.add(debrisTrajectory);
     scene.add(collisionPoint);
 
-    // 13. Animation loop
-    let pulseDirection = 0.01;
+    // Animation loop
     const animate = () => {
+      const animationRef = isAfterScene ? afterAnimationRef : beforeAnimationRef;
       animationRef.current = requestAnimationFrame(animate);
       
       // Rotate objects
@@ -363,20 +445,21 @@ const CollisionPredictions: React.FC = () => {
       debris.rotation.x += 0.01;
       debris.rotation.y += 0.007;
       
-      // Move objects toward collision point only if maneuver not completed
-      if (!maneuverCompleted[prediction.id] && satellite.position.distanceTo(debris.position) > 0.5) {
+      // Move objects toward collision point only in before scene if maneuver not completed
+      if (!isAfterScene && !maneuverCompleted[prediction.id] && satellite.position.distanceTo(debris.position) > 0.5) {
         satellite.position.lerp(new THREE.Vector3(0, 0, 0), 0.0005);
         debris.position.lerp(new THREE.Vector3(0, 0, 0), 0.0005);
       }
       
       // Pulse effect for collision point
-      if (collisionPointRef.current && collisionPointRef.current.visible) {
-        collisionPointRef.current.scale.x += pulseDirection * 0.05;
-        collisionPointRef.current.scale.y += pulseDirection * 0.05;
-        collisionPointRef.current.scale.z += pulseDirection * 0.05;
+      if (collisionPoint.visible) {
+        let pulseDirection = 0.01;
+        collisionPoint.scale.x += pulseDirection * 0.05;
+        collisionPoint.scale.y += pulseDirection * 0.05;
+        collisionPoint.scale.z += pulseDirection * 0.05;
         
-        if (collisionPointRef.current.scale.x > 1.2) pulseDirection = -0.01;
-        if (collisionPointRef.current.scale.x < 0.8) pulseDirection = 0.01;
+        if (collisionPoint.scale.x > 1.2) pulseDirection = -0.01;
+        if (collisionPoint.scale.x < 0.8) pulseDirection = 0.01;
       }
       
       controls.update();
@@ -384,35 +467,58 @@ const CollisionPredictions: React.FC = () => {
     };
     
     animate();
-    setThreeJSInitialized(true);
   };
 
   // Clean up Three.js resources
   useEffect(() => {
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (controlsRef.current) controlsRef.current.dispose();
-      if (rendererRef.current) {
-        rendererRef.current.dispose();
-        if (canvasRef.current?.contains(rendererRef.current.domElement)) {
-          canvasRef.current.removeChild(rendererRef.current.domElement);
+      // Clean up before scene
+      if (beforeAnimationRef.current) cancelAnimationFrame(beforeAnimationRef.current);
+      if (beforeControlsRef.current) beforeControlsRef.current.dispose();
+      if (beforeRendererRef.current) {
+        beforeRendererRef.current.dispose();
+        if (beforeCanvasRef.current?.contains(beforeRendererRef.current.domElement)) {
+          beforeCanvasRef.current.removeChild(beforeRendererRef.current.domElement);
+        }
+      }
+
+      // Clean up after scene
+      if (afterAnimationRef.current) cancelAnimationFrame(afterAnimationRef.current);
+      if (afterControlsRef.current) afterControlsRef.current.dispose();
+      if (afterRendererRef.current) {
+        afterRendererRef.current.dispose();
+        if (afterCanvasRef.current?.contains(afterRendererRef.current.domElement)) {
+          afterCanvasRef.current.removeChild(afterRendererRef.current.domElement);
         }
       }
     };
   }, []);
 
-  // Reinitialize scene when switching back to "Before" tab
+  // Initialize scenes when prediction is selected or maneuver completed
   useEffect(() => {
-    if (currentTab === 'before' && analysisResult && selectedPrediction) {
+    if (analysisResult && selectedPrediction) {
       const prediction = mockCollisionData.find(p => p.id === selectedPrediction);
       if (prediction) {
-        // Use setTimeout to ensure DOM is ready
-        setTimeout(() => {
-          initThreeJSScene(prediction, true);
-        }, 0);
+        // Initialize before scene only once
+        if (!beforeSceneRef.current) {
+          setTimeout(() => {
+            initThreeJSScene(prediction, beforeCanvasRef, false);
+          }, 0);
+        }
+  
+        // Initialize after scene only if there's successful mitigation history
+        const hasSuccessfulMitigation = mitigationHistory.some(
+          m => m.predictionId === selectedPrediction && m.success
+        );
+        
+        if (hasSuccessfulMitigation && !afterSceneRef.current) {
+          setTimeout(() => {
+            initThreeJSScene(prediction, afterCanvasRef, true);
+          }, 0);
+        }
       }
     }
-  }, [currentTab, analysisResult, selectedPrediction, maneuverCompleted]);
+  }, [analysisResult, selectedPrediction, maneuverCompleted, mitigationHistory]);
 
   // Handle row click
   const handleRowClick = (id: string) => {
@@ -425,7 +531,6 @@ const CollisionPredictions: React.FC = () => {
   // Analyze trajectory function
   const analyzeTrajectory = (predictionId: string) => {
     setIsAnalyzing(true);
-    setThreeJSInitialized(false);
     
     setTimeout(() => {
       const prediction = mockCollisionData.find(p => p.id === predictionId);
@@ -455,11 +560,6 @@ const CollisionPredictions: React.FC = () => {
       
       setAnalysisResult(result);
       setIsAnalyzing(false);
-      
-      // Initialize Three.js after state updates
-      setTimeout(() => {
-        if (prediction) initThreeJSScene(prediction);
-      }, 100);
     }, 1500);
   };
 
@@ -478,18 +578,18 @@ const CollisionPredictions: React.FC = () => {
       pdf.setTextColor(100, 100, 100);
       pdf.text(`Generated on: ${new Date().toLocaleString()}`, 105, 30, { align: 'center' });
 
-      // Capture Three.js canvas
-      if (canvasRef.current && rendererRef.current) {
+      // Capture Three.js canvas (using before scene for PDF)
+      if (beforeCanvasRef.current && beforeRendererRef.current) {
         // Pause animation for stable capture
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
+        if (beforeAnimationRef.current) {
+          cancelAnimationFrame(beforeAnimationRef.current);
         }
 
         // Force final render
-        rendererRef.current.render(sceneRef.current!, cameraRef.current!);
+        beforeRendererRef.current.render(beforeSceneRef.current!, beforeCameraRef.current!);
 
         // Create temporary canvas for capture
-        const canvas3D = rendererRef.current.domElement;
+        const canvas3D = beforeRendererRef.current.domElement;
         const canvas2D = document.createElement('canvas');
         canvas2D.width = canvas3D.width;
         canvas2D.height = canvas3D.height;
@@ -512,10 +612,10 @@ const CollisionPredictions: React.FC = () => {
         }
 
         // Restart animation
-        if (sceneRef.current && cameraRef.current && rendererRef.current) {
+        if (beforeSceneRef.current && beforeCameraRef.current && beforeRendererRef.current) {
           const animate = () => {
-            animationRef.current = requestAnimationFrame(animate);
-            rendererRef.current!.render(sceneRef.current!, cameraRef.current!);
+            beforeAnimationRef.current = requestAnimationFrame(animate);
+            beforeRendererRef.current!.render(beforeSceneRef.current!, beforeCameraRef.current!);
           };
           animate();
         }
@@ -569,7 +669,7 @@ const CollisionPredictions: React.FC = () => {
       // Save PDF
       pdf.save(`collision-report-${analysisResult?.predictionId || 'unknown'}.pdf`);
     } catch (error) {
-      ''
+      console.error('Error generating PDF:', error);
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -585,9 +685,9 @@ const CollisionPredictions: React.FC = () => {
       title: "Orbital Maneuver Initiated",
       description: `Calculating burn parameters for ${prediction?.objectA}...`,
     });
-
+  
     setTimeout(() => {
-      const success = Math.random() > 0.3; // 70% chance de sucesso
+      const success = Math.random() > 0.3; // 70% chance of success
       const newProbability = success ? prediction!.probability * 0.2 : prediction!.probability * 1.1;
       
       if (success) {
@@ -600,21 +700,21 @@ const CollisionPredictions: React.FC = () => {
         // Update maneuver state
         setManeuverCompleted(prev => ({...prev, [predictionId]: true}));
         
-        // Update 3D visualization
-        if (sceneRef.current && satelliteRef.current) {
-          gsap.to(satelliteRef.current.position, {
-            x: -2,
-            y: 1.5,
-            duration: 2,
-            ease: "power2.out",
-            onComplete: () => {
-              setCurrentTab('after');
+        // Force recreation of after scene with new positions
+        if (afterCanvasRef.current && prediction) {
+          // Clean up existing after scene
+          if (afterAnimationRef.current) cancelAnimationFrame(afterAnimationRef.current);
+          if (afterControlsRef.current) afterControlsRef.current.dispose();
+          if (afterRendererRef.current) {
+            afterRendererRef.current.dispose();
+            if (afterCanvasRef.current.contains(afterRendererRef.current.domElement)) {
+              afterCanvasRef.current.removeChild(afterRendererRef.current.domElement);
             }
-          });
-          
-          if (collisionPointRef.current) {
-            collisionPointRef.current.visible = false;
           }
+          afterSceneRef.current = null;
+          
+          // Create new after scene with maneuvered positions
+          initThreeJSScene(prediction, afterCanvasRef, true);
         }
       } else {
         toast({
@@ -623,7 +723,7 @@ const CollisionPredictions: React.FC = () => {
           variant: "destructive",
         });
       }
-
+  
       // Add to history
       setMitigationHistory(prev => [...prev, {
         id: crypto.randomUUID(),
@@ -635,8 +735,9 @@ const CollisionPredictions: React.FC = () => {
       }]);
       
       setIsManeuvering(false);
+      setCurrentTab('after');
     }, 3000);
-  };
+  };  
 
   const issueCollisionWarning = (predictionId: string) => {
     setShowMitigationDialog(false);
@@ -801,21 +902,15 @@ const CollisionPredictions: React.FC = () => {
                                   </Button>
                                 </div>
 
-                                {/* Analysis Results Section - Added directly below the buttons */}
+                                {/* Analysis Results Section */}
                                 {analysisResult && analysisResult.predictionId === prediction.id && (
                                   <div className="mt-6 border-t border-white/10 pt-4">
                                     <div className="space-y-4">
                                       {/* Enhanced 3D Visualization with Tabs */}
-                                      <Tabs value={currentTab} onValueChange={(v) => setCurrentTab(v as 'before' | 'after')}>
-                                        <TabsList className="grid grid-cols-2 w-64 mb-4">
-                                          <TabsTrigger value="before">Before</TabsTrigger>
-                                          <TabsTrigger value="after" disabled={!mitigationHistory.some(m => m.predictionId === analysisResult?.predictionId)}>
-                                            After
-                                          </TabsTrigger>
-                                        </TabsList>
+                                      <Tabs>
                                         <TabsContent value="before" forceMount>
                                           <div className="relative h-96 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            <div ref={canvasRef} className="absolute inset-0" />
+                                            <div ref={beforeCanvasRef} className="absolute inset-0 w-full" />
                                             
                                             {/* Improved Legend */}
                                             <div className="absolute bottom-4 left-4 z-10 bg-space-dark/90 p-3 rounded-lg text-xs space-y-2 backdrop-blur-sm">
@@ -845,27 +940,37 @@ const CollisionPredictions: React.FC = () => {
                                             </div>
                                           </div>
                                         </TabsContent>
-                                        <TabsContent value="after">
-                                          <div className="relative h-96 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            {mitigationHistory.some(m => m.predictionId === analysisResult?.predictionId) ? (
-                                              <>
-                                                <div ref={canvasRef} className="absolute inset-0" />
-                                                <div className="absolute bottom-4 left-4 z-10 bg-space-dark/90 p-3 rounded-lg text-xs space-y-2 backdrop-blur-sm">
-                                                  <p className="text-neon-blue mb-2">Maneuver Completed</p>
-                                                  <p className="text-sm">
-                                                    New probability: {
-                                                      mitigationHistory.find(m => m.predictionId === analysisResult?.predictionId)?.newProbability?.toFixed(4) || 'N/A'
-                                                    }
-                                                  </p>
+                                        {maneuverCompleted[selectedPrediction] ?                                         
+                                          <TabsContent value="after" forceMount>
+                                            <div className="relative h-96 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
+                                              <div ref={afterCanvasRef} className="absolute inset-0" />
+                                              
+                                              {/* Improved Legend */}
+                                              <div className="absolute bottom-4 left-4 z-10 bg-space-dark/90 p-3 rounded-lg text-xs space-y-2 backdrop-blur-sm">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                                  <span className="font-medium">{analysisResult.objects[0]} (Satellite)</span>
                                                 </div>
-                                              </>
-                                            ) : (
-                                              <div className="absolute inset-0 flex items-center justify-center">
-                                                <p className="text-white/70">No mitigation actions taken yet</p>
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                                  <span className="font-medium">{analysisResult.objects[1]} (Debris)</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-3 h-3 border border-green-500"></div>
+                                                  <span>Original Path</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                                  <span>Avoidance Path</span>
+                                                </div>
+                                                <div className="pt-2 text-white/60 text-[0.7rem]">
+                                                  <p>• Rotate: Left mouse drag</p>
+                                                  <p>• Zoom: Mouse wheel</p>
+                                                  <p>• Pan: Right mouse drag</p>
+                                                </div>
                                               </div>
-                                            )}
-                                          </div>
-                                        </TabsContent>
+                                            </div>
+                                          </TabsContent> : null}
                                       </Tabs>
 
                                       {/* Mitigation History */}
