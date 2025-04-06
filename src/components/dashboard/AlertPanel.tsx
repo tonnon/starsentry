@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { AlertTriangle, ShieldAlert, AlertCircle, ExternalLink, Send, BarChart2, Download, Check, X } from 'lucide-react';
-import { is } from '@react-three/fiber/dist/declarations/src/core/utils';
+import { jsPDF } from 'jspdf';
 
 // Types
 interface Alert {
@@ -200,6 +200,7 @@ const AlertItem: React.FC<{
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
   
   const severityConfig = {
     high: {
@@ -359,6 +360,50 @@ const AlertItem: React.FC<{
     }
   };
 
+  const generatePDFReport = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const pdf = new jsPDF();
+    
+    // Title
+    pdf.setFontSize(20);
+    pdf.text(`Alert Report: ${alert.title}`, 105, 20, { align: 'center' });
+    
+    // Alert details
+    pdf.setFontSize(12);
+    pdf.text(`Description: ${alert.description}`, 15, 40);
+    pdf.text(`Severity: ${alert.severity.toUpperCase()}`, 15, 50);
+    pdf.text(`Timestamp: ${new Date(alert.timestamp).toLocaleString()}`, 15, 60);
+    
+    // Analysis section
+    if (analysisData) {
+      pdf.addPage();
+      pdf.setFontSize(16);
+      pdf.text('Risk Analysis', 105, 20, { align: 'center' });
+      
+      // Risk score
+      pdf.setFontSize(12);
+      pdf.text(`Overall Risk Score: ${analysisData.riskScore.toFixed(0)}/100`, 15, 40);
+      
+      // Trajectory analysis
+      pdf.text('Trajectory Analysis:', 15, 60);
+      pdf.text(`- Time to Event: ${analysisData.trajectoryAnalysis.timeToEvent}`, 20, 70);
+      pdf.text(`- Closest Approach: ${analysisData.trajectoryAnalysis.closestApproach}`, 20, 80);
+      pdf.text(`- Relative Velocity: ${analysisData.trajectoryAnalysis.relativeVelocity}`, 20, 90);
+      
+      // Recommendations
+      pdf.addPage();
+      pdf.setFontSize(16);
+      pdf.text('Recommended Actions', 105, 20, { align: 'center' });
+      
+      analysisData.recommendations.forEach((rec, index) => {
+        const y = 40 + (index * 20);
+        pdf.text(`${index + 1}. ${rec.action} (${rec.priority} priority)`, 15, y);
+      });
+    }
+    
+    pdf.save(`alert-report-${alert.id}.pdf`);
+  };
+  
+
   return (
     <div className={`p-3 rounded-lg ${config.bg} ${config.border} border mb-3 transition-all`}>
       <div className="flex items-start gap-3">
@@ -393,7 +438,7 @@ const AlertItem: React.FC<{
           </div>
           
           {expanded && (
-            <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
+            <div ref={pdfRef} className="mt-3 pt-3 border-t border-white/10 space-y-3">
               {/* Technical Details */}
               {alert.objectsInvolved && (
                 <div>
@@ -519,7 +564,10 @@ const AlertItem: React.FC<{
                     </>
                   )}
                 </button>
-                <button className="text-xs flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded disabled:opacity-50" disabled={!isAnalyzing}>
+                <button 
+                  onClick={generatePDFReport}
+                  className="text-xs flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded disabled:opacity-50" 
+                  disabled={!isAnalyzing}>
                   <Download size={12} /> Export
                 </button>
               </div>
