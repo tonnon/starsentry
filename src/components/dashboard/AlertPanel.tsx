@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, ShieldAlert, AlertCircle, ExternalLink, Send, BarChart2, Download, Check, X } from 'lucide-react';
+import { is } from '@react-three/fiber/dist/declarations/src/core/utils';
 
 // Types
 interface Alert {
@@ -198,6 +199,7 @@ const AlertItem: React.FC<{
   }>({ status: 'idle' });
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const severityConfig = {
     high: {
@@ -294,6 +296,7 @@ const AlertItem: React.FC<{
       ]
     });
     setShowAnalysis(!showAnalysis);
+    setIsAnalyzing(true)
   };
 
   const handleApplyRecommendation = async (index: number) => {
@@ -493,12 +496,21 @@ const AlertItem: React.FC<{
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2">
                 <button 
+                  onClick={handleAnalyze}
+                  className={`text-xs flex items-center gap-1 px-2 py-1 rounded ${
+                    showAnalysis ? 'bg-neon-blue/20 text-neon-blue' : 'bg-white/10 hover:bg-white/20'
+                  }`}
+                >
+                  <BarChart2 size={12} /> Analyze
+                </button>
+                <button 
                   onClick={handleNotify}
-                  disabled={notificationState.status === 'sending'}
+                  disabled={!isAnalyzing || notificationState.status === 'sending'}
                   className="text-xs flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded transition-colors disabled:opacity-50"
+                  
                 >
                   {notificationState.status === 'sending' ? (
-                    <>
+                    <>  
                       <span className="animate-spin">↻</span> Sending...
                     </>
                   ) : (
@@ -507,15 +519,7 @@ const AlertItem: React.FC<{
                     </>
                   )}
                 </button>
-                <button 
-                  onClick={handleAnalyze}
-                  className={`text-xs flex items-center gap-1 px-2 py-1 rounded ${
-                    showAnalysis ? 'bg-neon-blue/20 text-neon-blue' : 'bg-white/10 hover:bg-white/20'
-                  }`}
-                >
-                  <BarChart2 size={12} /> Analyze
-                </button>
-                <button className="text-xs flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded">
+                <button className="text-xs flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 rounded disabled:opacity-50" disabled={!isAnalyzing}>
                   <Download size={12} /> Export
                 </button>
               </div>
