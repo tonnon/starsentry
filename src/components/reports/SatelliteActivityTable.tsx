@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Download, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { useDebounce } from 'use-debounce';
 
 interface SatelliteActivity {
   id: string;
@@ -21,6 +21,7 @@ interface SatelliteActivityTableProps {
 const SatelliteActivityTable: React.FC<SatelliteActivityTableProps> = ({ timeRange }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
 
   const toggleExpandRow = (id: string) => {
     setExpandedRows(prev => 
@@ -30,47 +31,104 @@ const SatelliteActivityTable: React.FC<SatelliteActivityTableProps> = ({ timeRan
     );
   };
 
-  // Generate sample satellite activity data
-  const generateActivityData = (): SatelliteActivity[] => {
+  const generateBaseActivityData = (): SatelliteActivity[] => {
     const activityTypes = ['Orbital Adjustment', 'System Restart', 'Payload Activation', 'Telemetry Update', 'Power Mode Change'];
     const statuses = ['Completed', 'In Progress', 'Failed', 'Scheduled'];
     const satellites = ['Sentinel-6A', 'Landsat-9', 'WorldView-4', 'TerraSAR-X', 'GOES-16', 'NOAA-20'];
     
-    let count = 20;
-    if (timeRange === 'day') count = 8;
-    if (timeRange === 'week') count = 15;
-    if (timeRange === 'year') count = 30;
+    // Total number of activities to generate
+    const totalActivities = 100;
     
-    return Array.from({ length: count }, (_, i) => {
-      const timestamp = new Date();
-      if (timeRange === 'day') {
-        timestamp.setHours(timestamp.getHours() - Math.floor(Math.random() * 24));
-      } else if (timeRange === 'week') {
-        timestamp.setDate(timestamp.getDate() - Math.floor(Math.random() * 7));
-      } else if (timeRange === 'month') {
-        timestamp.setDate(timestamp.getDate() - Math.floor(Math.random() * 30));
+    return Array.from({ length: totalActivities }, (_, i) => {
+      const now = new Date();
+      const timestamp = new Date(now);
+      
+      // Distribute activities across different time periods
+      const timeDistribution = Math.random();
+      
+      if (timeDistribution < 0.3) {
+        // 30% of activities in last day
+        timestamp.setHours(now.getHours() - Math.floor(Math.random() * 24));
+      } else if (timeDistribution < 0.6) {
+        // 30% in last week (1-7 days)
+        timestamp.setDate(now.getDate() - 1 - Math.floor(Math.random() * 6));
+      } else if (timeDistribution < 0.85) {
+        // 25% in last month (1-4 weeks)
+        timestamp.setDate(now.getDate() - 7 - Math.floor(Math.random() * 21));
       } else {
-        timestamp.setMonth(timestamp.getMonth() - Math.floor(Math.random() * 12));
+        timestamp.setMonth(now.getMonth() - 1 - Math.floor(Math.random() * 11));
       }
+      
+      timestamp.setMinutes(Math.floor(Math.random() * 60));
+      timestamp.setSeconds(Math.floor(Math.random() * 60));
       
       return {
         id: `act-${i}`,
         satellite: satellites[Math.floor(Math.random() * satellites.length)],
         type: activityTypes[Math.floor(Math.random() * activityTypes.length)],
-        timestamp: timestamp.toLocaleString(),
+        timestamp: timestamp.toISOString(),
         status: statuses[Math.floor(Math.random() * statuses.length)],
-        details: `Detailed information about this activity. This includes technical parameters, command logs, and operational metrics related to the ${activityTypes[Math.floor(Math.random() * activityTypes.length)]} operation.`
+        details: `Detailed log for ${activityTypes[Math.floor(Math.random() * activityTypes.length)]} operation. ` +
+                 `Performed on ${timestamp.toLocaleDateString()} at ${timestamp.toLocaleTimeString()}. ` +
+                 `Current status: ${statuses[Math.floor(Math.random() * statuses.length)]}.`
       };
     });
   };
 
-  const activities = generateActivityData();
+  const baseActivities = useMemo(generateBaseActivityData, []);
   
-  const filteredActivities = activities.filter(activity => 
-    activity.satellite.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    activity.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    activity.status.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const timeFilteredActivities = useMemo(() => {
+    const now = new Date();
+    const cutoffDate = new Date(now);
+    
+    switch (timeRange) {
+      case 'day':
+        cutoffDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        cutoffDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        cutoffDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        cutoffDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        return baseActivities;
+    }
+  
+    return baseActivities.filter(activity => {
+      const activityDate = new Date(activity.timestamp);
+      return activityDate >= cutoffDate;
+    });
+  }, [baseActivities, timeRange]);
+
+  const filteredActivities = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) return timeFilteredActivities;
+
+    const query = debouncedSearchQuery
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    return timeFilteredActivities.filter(activity => {
+      const normalizeField = (text: string) => text
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+      return (
+        normalizeField(activity.satellite).includes(query) ||
+        normalizeField(activity.type).includes(query) ||
+        normalizeField(activity.status).includes(query)
+      );
+    });
+  }, [timeFilteredActivities, debouncedSearchQuery]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -85,19 +143,15 @@ const SatelliteActivityTable: React.FC<SatelliteActivityTableProps> = ({ timeRan
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:max-w-xs">
+        <div className="relative w-full sm:max-w-xs mt-4">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/50" />
           <Input 
             placeholder="Search activities..." 
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="pl-9 bg-space-dark border-space-light"
           />
         </div>
-        <Button variant="outline" className="bg-space-dark border-space-light">
-          <Download className="h-4 w-4 mr-2" />
-          Export
-        </Button>
       </div>
       
       <div className="border border-space-light rounded-md">
